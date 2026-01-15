@@ -215,6 +215,39 @@ For production deployments, you can put Cloudflare in front of your Convex stati
 | `index.html` | `must-revalidate` | ✓ | Revalidates with 304 support |
 | Images, fonts | `max-age=1yr, immutable` | ✓ | Cached long-term |
 
+### Recommended: Use a Path Prefix
+
+When using Cloudflare, serve static files from a dedicated path (e.g., `/app/`) so your API routes remain unaffected:
+
+```ts
+// convex/http.ts
+import { httpRouter } from "convex/server";
+import { registerStaticRoutes } from "@get-convex/self-static-hosting";
+import { components } from "./_generated/api";
+
+const http = httpRouter();
+
+// Static files at /app/ - cached aggressively by Cloudflare
+registerStaticRoutes(http, components.selfStaticHosting, {
+  pathPrefix: "/app",
+});
+
+// Your API routes - different cache rules or no caching
+http.route({
+  path: "/api/webhook",
+  method: "POST",
+  handler: webhookHandler,
+});
+
+export default http;
+```
+
+This lets you configure Cloudflare Page Rules separately:
+- `/app/*` → Cache Everything, Edge TTL: 1 month
+- `/api/*` → Bypass Cache
+
+Your app will be available at `https://yourdomain.com/app/`
+
 ### Setting Up Cloudflare
 
 1. **Add your site to Cloudflare** and update your domain's nameservers
@@ -228,6 +261,10 @@ For production deployments, you can put Cloudflare in front of your Convex stati
    ```
 
 3. **Configure SSL** - Set to "Full" in Cloudflare SSL/TLS settings
+
+4. **(Optional) Add Page Rules** for fine-grained cache control:
+   - `/app/assets/*` → Cache Level: Cache Everything, Edge TTL: 1 year
+   - `/app/*` → Cache Level: Cache Everything, Edge TTL: 1 day
 
 ### Optional: Cache Purging
 
