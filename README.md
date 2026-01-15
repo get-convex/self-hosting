@@ -9,8 +9,9 @@ A Convex component that enables self-hosting static React/Vite apps using Convex
 - 🚀 **Simple deployment** - Upload your built files directly to Convex storage
 - 🔒 **Secure by default** - Upload API uses internal functions (not publicly accessible)
 - 🔄 **SPA support** - Automatic fallback to index.html for client-side routing
-- ⚡ **Smart caching** - Hashed assets get long-term caching, HTML is always fresh
+- ⚡ **Smart caching** - Hashed assets get long-term caching, HTML is always fresh with ETag support
 - 🧹 **Auto cleanup** - Old deployment files are automatically garbage collected
+- ☁️ **Cloudflare ready** - One-command CDN setup with automatic cache purging
 - 📦 **Zero config** - Works out of the box with Vite, Create React App, and other bundlers
 
 ## Installation
@@ -138,11 +139,24 @@ This means unauthorized users **cannot** upload files to your site, even if they
 
 ## CDN Setup (Cloudflare)
 
-For production deployments, you can put Cloudflare in front of your Convex static site for:
-- **Edge caching** - Assets served from 300+ global PoPs
-- **Automatic compression** - Brotli/gzip handled by Cloudflare
-- **DDoS protection** - Built-in security
-- **Custom domains** - Use `yourapp.com` instead of `*.convex.site`
+For production deployments, put Cloudflare in front of your Convex static site for edge caching, compression, DDoS protection, and custom domains.
+
+### Quick Setup (Recommended)
+
+```bash
+npx @get-convex/self-static-hosting setup-cloudflare
+```
+
+This interactive wizard will:
+1. Login to Cloudflare (via wrangler)
+2. Let you select or add a domain
+3. Configure DNS pointing to your Convex site
+4. Create an API token for cache purging
+5. Save credentials to `.env.local`
+
+Then just deploy - cache is automatically purged!
+
+### What You Get
 
 ### Cache Behavior
 
