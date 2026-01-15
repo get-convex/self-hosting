@@ -5,6 +5,44 @@
 A Convex component that enables self-hosting static React/Vite apps using Convex
 HTTP actions and file storage. No external hosting provider required!
 
+## Quick Start
+
+### Automated Setup (Recommended)
+
+```bash
+npm install @get-convex/self-static-hosting
+npx @get-convex/self-static-hosting setup
+```
+
+The interactive wizard will:
+1. Create necessary Convex files
+2. Configure your deployment mode (Cloudflare Pages, Convex Storage, or Cloudflare CDN)
+3. Set up Cloudflare (if selected)
+4. Add deploy script to package.json
+
+Then deploy:
+```bash
+npm run deploy
+```
+
+### For LLMs / AI Assistants
+
+If you're an LLM helping a user integrate this component, read [INTEGRATION.md](./INTEGRATION.md) for complete integration instructions optimized for AI consumption.
+
+### Manual Setup
+
+See [Manual Setup](#manual-setup-1) section below for step-by-step instructions.
+
+## Deployment Modes
+
+Choose the mode that fits your needs:
+
+| Mode | Storage | CDN | Best For | Complexity |
+|------|---------|-----|----------|------------|
+| **Cloudflare Pages** | Cloudflare Edge | Built-in | Production apps | Medium |
+| **Convex Storage** | Convex | None | Simple apps, dev/testing | Low |
+| **Convex + CF CDN** | Convex | Cloudflare | Custom domain + caching | High |
+
 ## Features
 
 - 🚀 **Simple deployment** - Upload your built files directly to Convex storage
@@ -25,27 +63,15 @@ https://github.com/user-attachments/assets/5eaf781f-87da-4292-9f96-38070c86cd39
 
 
 
-## Installation
+## Manual Setup
 
-Install the component:
-
-```bash
-npm install github:get-convex/self-static-hosting#main
-```
-
-### Quick Start with LLM
-
-Get comprehensive integration instructions to paste into your AI assistant:
+### 1. Install
 
 ```bash
-npx @get-convex/self-static-hosting init
+npm install @get-convex/self-static-hosting
 ```
 
-This outputs all the code you need to integrate the component.
-
-### Manual Setup
-
-Add to your `convex/convex.config.ts`:
+### 2. Add to your `convex/convex.config.ts`:
 
 ```ts
 import { defineApp } from "convex/server";
@@ -57,11 +83,11 @@ app.use(selfStaticHosting);
 export default app;
 ```
 
-## Setup
-
-### 1. Register HTTP routes
+### 3. Register HTTP routes (Convex Storage mode only)
 
 Create or update `convex/http.ts` to serve static files:
+
+**Note:** Skip this step if using Cloudflare Pages mode.
 
 ```ts
 import { httpRouter } from "convex/server";
@@ -76,7 +102,7 @@ registerStaticRoutes(http, components.selfStaticHosting);
 export default http;
 ```
 
-### 2. Expose upload API (internal functions)
+### 4. Expose upload API (internal functions)
 
 Create a file like `convex/staticHosting.ts`:
 
@@ -94,7 +120,7 @@ export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
 enable HTTP actions. If you see the error "This Convex deployment does not have
 HTTP actions enabled", it means the Convex backend hasn't been deployed yet.
 
-### 3. Add deploy script to package.json
+### 5. Add deploy script to package.json
 
 ```json
 {

@@ -17,12 +17,12 @@
     "self-static-hosting": "./dist/cli/index.js"
   },
   "scripts": {
-    "postinstall": "echo '\\n📦 @get-convex/self-static-hosting installed!\\n\\n   Run this command to get LLM integration instructions:\\n   npx @get-convex/self-static-hosting init\\n'",
+    "postinstall": "echo '\\n📦 @get-convex/self-static-hosting installed!\\n\\n   🚀 Quick Setup (Interactive):\\n   npx @get-convex/self-static-hosting setup\\n\\n   🤖 For LLMs: See INTEGRATION.md for complete integration instructions\\n   📖 Manual Setup: npx @get-convex/self-static-hosting init\\n'",
     "dev": "run-p -r 'dev:*'",
     "dev:backend": "convex dev --typecheck-components",
     "dev:frontend": "cd example && vite --clearScreen false",
     "build:example": "cd example && vite build",
-    "upload:static": "node dist/cli/index.js upload --dist ./example/dist --component example",
+    "upload:static": "node dist/cli/index.js upload --dist ./example/dist --component staticHosting",
     "deploy:static": "npm run build:example && npm run upload:static",
     "dev:build": "chokidar 'tsconfig*.json' 'src/**/*.ts' -i '**/*.test.ts' -c 'npm run build:codegen' --initial",
     "predev": "path-exists .env.local dist || (npm run build && convex dev --once)",

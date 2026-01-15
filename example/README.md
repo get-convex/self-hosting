@@ -32,7 +32,7 @@ Your app will then be available at `https://your-deployment.convex.site`.
 ## Files
 
 - `convex/convex.config.ts` - Imports and uses the static hosting component
-- `convex/example.ts` - Exposes upload API functions
+- `convex/staticHosting.ts` - Exposes upload API functions
 - `convex/http.ts` - Registers static file serving routes
 - `scripts/upload-static.ts` - Script to upload built files to Convex
 - `src/` - Example React application
