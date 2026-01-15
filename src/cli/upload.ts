@@ -7,7 +7,7 @@
  *
  * Options:
  *   --dist <path>       Path to dist directory (default: ./dist)
- *   --module <name>     Convex module with upload functions (default: staticHosting)
+ *   --component <name>  Convex component with upload functions (default: staticHosting)
  *   --domain <domain>   Domain for Cloudflare cache purge (auto-detects zone ID)
  *   --help              Show help
  */
@@ -47,7 +47,7 @@ function getMimeType(path: string): string {
 
 interface ParsedArgs {
   dist: string;
-  module: string;
+  component: string;
   domain: string | null;
   help: boolean;
 }
@@ -55,7 +55,7 @@ interface ParsedArgs {
 function parseArgs(args: string[]): ParsedArgs {
   const result: ParsedArgs = {
     dist: "./dist",
-    module: "staticHosting",
+    component: "staticHosting",
     domain: null,
     help: false,
   };
@@ -66,8 +66,8 @@ function parseArgs(args: string[]): ParsedArgs {
       result.help = true;
     } else if (arg === "--dist" || arg === "-d") {
       result.dist = args[++i] || result.dist;
-    } else if (arg === "--module" || arg === "-m") {
-      result.module = args[++i] || result.module;
+    } else if (arg === "--component" || arg === "-c") {
+      result.component = args[++i] || result.component;
     } else if (arg === "--domain") {
       result.domain = args[++i] || null;
     }
@@ -83,10 +83,10 @@ Usage: npx @get-convex/self-static-hosting upload [options]
 Upload static files from a dist directory to Convex storage.
 
 Options:
-  -d, --dist <path>     Path to dist directory (default: ./dist)
-  -m, --module <name>   Convex module with upload functions (default: staticHosting)
-      --domain <name>   Domain for Cloudflare cache purge (e.g., example.com)
-  -h, --help            Show this help message
+  -d, --dist <path>        Path to dist directory (default: ./dist)
+  -c, --component <name>   Convex component with upload functions (default: staticHosting)
+      --domain <name>      Domain for Cloudflare cache purge (e.g., example.com)
+  -h, --help               Show this help message
 
 Cloudflare Cache Purging:
   The CLI will automatically purge Cloudflare cache if credentials are available.
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
   }
 
   const distDir = resolve(args.dist);
-  const moduleName = args.module;
+  const componentName = args.component;
 
   if (!existsSync(distDir)) {
     console.error(`Error: dist directory not found: ${distDir}`);
@@ -292,14 +292,14 @@ async function main(): Promise<void> {
   console.log(
     `Uploading ${files.length} files with deployment ID: ${deploymentId}`,
   );
-  console.log(`Module: ${moduleName}`);
+  console.log(`Component: ${componentName}`);
   console.log("");
 
   for (const file of files) {
     const content = readFileSync(file.localPath);
 
     // Get upload URL via internal function
-    const uploadUrlOutput = convexRun(`${moduleName}:generateUploadUrl`);
+    const uploadUrlOutput = convexRun(`${componentName}:generateUploadUrl`);
     const uploadUrl = JSON.parse(uploadUrlOutput);
 
     // Upload to storage
@@ -312,7 +312,7 @@ async function main(): Promise<void> {
     const { storageId } = (await response.json()) as { storageId: string };
 
     // Record in database via internal function
-    convexRun(`${moduleName}:recordAsset`, {
+    convexRun(`${componentName}:recordAsset`, {
       path: file.path,
       storageId,
       contentType: file.contentType,
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
   console.log("");
 
   // Garbage collect old files
-  const deletedOutput = convexRun(`${moduleName}:gcOldAssets`, {
+  const deletedOutput = convexRun(`${componentName}:gcOldAssets`, {
     currentDeploymentId: deploymentId,
   });
   const deleted = JSON.parse(deletedOutput);
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
     console.log("☁️  Purging Cloudflare cache...");
     try {
       // Use Convex function (useful for CI/CD where you might want logging)
-      convexRun(`${moduleName}:purgeCloudflareCache`, {
+      convexRun(`${componentName}:purgeCloudflareCache`, {
         zoneId: cloudflareZoneId,
         apiToken: cloudflareApiToken,
         purgeAll: true,

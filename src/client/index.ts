@@ -375,25 +375,6 @@ export function getConvexUrl(): string {
 }
 
 /**
- * Get the Convex URL, with fallback to environment variable.
- * Safe to call in both browser and non-browser contexts when env var is set.
- *
- * @param envUrl - The environment variable value (e.g., import.meta.env.VITE_CONVEX_URL)
- *
- * @example
- * ```typescript
- * const convexUrl = getConvexUrlWithFallback(import.meta.env.VITE_CONVEX_URL);
- * ```
- */
-export function getConvexUrlWithFallback(envUrl?: string): string {
-  if (envUrl) {
-    return envUrl;
-  }
-
-  return getConvexUrl();
-}
-
-/**
  * Expose an action to purge Cloudflare cache after deployment.
  * This is optional - only needed if you're using Cloudflare as a CDN.
  *

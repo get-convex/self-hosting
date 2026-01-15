@@ -92,38 +92,16 @@ export default http;
 }
 \`\`\`
 
-If using a path prefix, specify the module:
+If using a path prefix, specify the component:
 \`\`\`json
 {
   "scripts": {
-    "deploy:static": "npm run build && npx @get-convex/self-static-hosting upload --module staticHosting"
+    "deploy:static": "npm run build && npx @get-convex/self-static-hosting upload --component staticHosting"
   }
 }
 \`\`\`
 
-### 5. src/main.tsx (modify entry point)
-
-\`\`\`typescript
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { getConvexUrlWithFallback } from "@get-convex/self-static-hosting";
-import App from "./App";
-
-// Auto-detects Convex URL when deployed to *.convex.site
-const convexUrl = getConvexUrlWithFallback(import.meta.env.VITE_CONVEX_URL);
-const convex = new ConvexReactClient(convexUrl);
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ConvexProvider client={convex}>
-      <App />
-    </ConvexProvider>
-  </React.StrictMode>
-);
-\`\`\`
-
-### 6. src/App.tsx (optional: add live reload banner)
+### 5. src/App.tsx (optional: add live reload banner)
 
 \`\`\`typescript
 import { UpdateBanner } from "@get-convex/self-static-hosting/react";

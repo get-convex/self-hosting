@@ -90,7 +90,7 @@ export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
 }
 ```
 
-The CLI will automatically find your `dist/` directory and upload to the `staticHosting` module.
+The CLI will automatically find your `dist/` directory and upload to the `staticHosting` component.
 
 **CLI Options:**
 ```bash
@@ -98,22 +98,9 @@ npx @get-convex/self-static-hosting upload [options]
 
 Options:
   -d, --dist <path>     Path to dist directory (default: ./dist)
-  -m, --module <name>   Convex module name (default: staticHosting)
+  -c, --component <name>   Convex component name (default: staticHosting)
       --domain <name>   Domain for Cloudflare cache purge (auto-detects zone ID)
   -h, --help            Show help
-```
-
-### 4. Update your app's entry point (optional)
-
-In your `main.tsx`, use the helper to auto-detect the Convex URL when deployed:
-
-```tsx
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { getConvexUrlWithFallback } from "@get-convex/self-static-hosting";
-
-// Works both in development (uses VITE_CONVEX_URL) and production (auto-detects)
-const convexUrl = getConvexUrlWithFallback(import.meta.env.VITE_CONVEX_URL);
-const convex = new ConvexReactClient(convexUrl);
 ```
 
 ## Deployment

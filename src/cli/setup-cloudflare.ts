@@ -96,15 +96,43 @@ function getConvexSiteUrl(): string | null {
 }
 
 /**
- * Get API token from wrangler config
+ * Check if wrangler is logged in by running `wrangler whoami`
+ */
+function isWranglerLoggedIn(): boolean {
+  try {
+    const result = execSync("npx wrangler whoami", { stdio: "pipe", encoding: "utf-8" });
+    // If the command succeeds and doesn't contain "not authenticated", we're logged in
+    return !result.toLowerCase().includes("not authenticated");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get API token from wrangler config (checks multiple locations/formats)
  */
 function getWranglerToken(): string | null {
-  const configPath = join(homedir(), ".wrangler", "config", "default.toml");
-  if (existsSync(configPath)) {
-    const content = readFileSync(configPath, "utf-8");
-    const match = content.match(/oauth_token\s*=\s*"([^"]+)"/);
-    if (match) {
-      return match[1];
+  // Try the new config location first (wrangler 3.x+)
+  const configPaths = [
+    join(homedir(), ".wrangler", "config", "default.toml"),
+    join(homedir(), ".wrangler", "config.toml"),
+  ];
+  
+  const tokenPatterns = [
+    /oauth_token\s*=\s*"([^"]+)"/,
+    /access_token\s*=\s*"([^"]+)"/,
+    /token\s*=\s*"([^"]+)"/,
+  ];
+  
+  for (const configPath of configPaths) {
+    if (existsSync(configPath)) {
+      const content = readFileSync(configPath, "utf-8");
+      for (const pattern of tokenPatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          return match[1];
+        }
+      }
     }
   }
   return null;
@@ -281,8 +309,8 @@ async function main(): Promise<void> {
   log("");
   log("Step 2: Checking Cloudflare authentication...");
 
-  let token = getWranglerToken();
-  if (!token) {
+  let loggedIn = isWranglerLoggedIn();
+  if (!loggedIn) {
     info("Not logged in to Cloudflare.");
     const shouldLogin = await promptYesNo("Would you like to login now?");
     if (!shouldLogin) {
@@ -295,14 +323,34 @@ async function main(): Promise<void> {
     log("Opening browser for Cloudflare login...");
     spawnSync("npx", ["wrangler", "login"], { stdio: "inherit" });
 
-    token = getWranglerToken();
-    if (!token) {
+    // Verify login succeeded
+    loggedIn = isWranglerLoggedIn();
+    if (!loggedIn) {
       error("Login failed. Please try again.");
       rl.close();
       process.exit(1);
     }
   }
   success("Logged in to Cloudflare");
+
+  // Try to get OAuth token from wrangler config for API calls
+  let token = getWranglerToken();
+  if (!token) {
+    warn("Could not read wrangler OAuth token from config file.");
+    log("This may happen with newer versions of wrangler.");
+    log("");
+    log("Please create an API token manually:");
+    log("  1. Go to https://dash.cloudflare.com/profile/api-tokens");
+    log("  2. Click 'Create Token'");
+    log("  3. Use 'Edit zone DNS' template (or custom with Zone:Read, DNS:Edit, Cache Purge)");
+    log("");
+    token = await prompt("Paste your API token here: ");
+    if (!token) {
+      error("API token is required to continue.");
+      rl.close();
+      process.exit(1);
+    }
+  }
 
   // Step 3: Get Convex site URL
   log("");
