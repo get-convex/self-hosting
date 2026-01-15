@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, type CSSProperties, type JSX } from "react";
 import type { FunctionReference } from "convex/server";
 
 type DeploymentInfo = {
@@ -124,13 +124,13 @@ export function UpdateBanner({
   buttonText?: string;
   dismissable?: boolean;
   className?: string;
-  style?: React.CSSProperties;
-}) {
+  style?: CSSProperties;
+}): JSX.Element | null {
   const { updateAvailable, reload, dismiss } = useDeploymentUpdates(getCurrentDeployment);
 
   if (!updateAvailable) return null;
 
-  const defaultStyle: React.CSSProperties = {
+  const defaultStyle: CSSProperties = {
     position: "fixed",
     bottom: "1rem",
     right: "1rem",
@@ -148,7 +148,7 @@ export function UpdateBanner({
     ...style,
   };
 
-  const buttonStyle: React.CSSProperties = {
+  const buttonStyle: CSSProperties = {
     backgroundColor: "#4f46e5",
     color: "#fff",
     border: "none",
@@ -158,7 +158,7 @@ export function UpdateBanner({
     fontWeight: 500,
   };
 
-  const dismissStyle: React.CSSProperties = {
+  const dismissStyle: CSSProperties = {
     background: "none",
     border: "none",
     color: "#888",

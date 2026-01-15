@@ -22,7 +22,7 @@
     "dev:backend": "convex dev --typecheck-components",
     "dev:frontend": "cd example && vite --clearScreen false",
     "build:example": "cd example && vite build",
-    "upload:static": "node dist/cli/index.js upload --dist ./example/dist --module example",
+    "upload:static": "node dist/cli/index.js upload --dist ./example/dist --component example",
     "deploy:static": "npm run build:example && npm run upload:static",
     "dev:build": "chokidar 'tsconfig*.json' 'src/**/*.ts' -i '**/*.test.ts' -c 'npm run build:codegen' --initial",
     "predev": "path-exists .env.local dist || (npm run build && convex dev --once)",
