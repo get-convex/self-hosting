@@ -66,106 +66,30 @@ export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
   exposeUploadApi(components.selfStaticHosting);
 ```
 
-### 3. Create upload script
-
-Create `scripts/upload-static.ts`:
-
-```ts
-import { readFileSync, readdirSync, existsSync } from "fs";
-import { join, relative, dirname, extname } from "path";
-import { randomUUID } from "crypto";
-import { fileURLToPath } from "url";
-import { execSync } from "child_process";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const distDir = join(__dirname, "../dist");
-
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff2": "font/woff2",
-};
-
-function getMimeType(path: string): string {
-  return MIME_TYPES[extname(path).toLowerCase()] || "application/octet-stream";
-}
-
-function convexRun(fn: string, args: Record<string, unknown> = {}): string {
-  const cmd = `npx convex run "${fn}" '${JSON.stringify(args)}' --typecheck=disable --codegen=disable`;
-  return execSync(cmd, { encoding: "utf-8" }).trim();
-}
-
-function collectFiles(dir: string, baseDir: string) {
-  const files: Array<{ path: string; localPath: string; contentType: string }> = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectFiles(fullPath, baseDir));
-    } else if (entry.isFile()) {
-      files.push({
-        path: "/" + relative(baseDir, fullPath).replace(/\\/g, "/"),
-        localPath: fullPath,
-        contentType: getMimeType(fullPath),
-      });
-    }
-  }
-  return files;
-}
-
-async function main() {
-  if (!existsSync(distDir)) {
-    console.error("dist/ not found. Run 'npm run build' first.");
-    process.exit(1);
-  }
-
-  const deploymentId = randomUUID();
-  const files = collectFiles(distDir, distDir);
-
-  console.log(`Uploading ${files.length} files...`);
-
-  for (const file of files) {
-    const uploadUrl = JSON.parse(convexRun("staticHosting:generateUploadUrl"));
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": file.contentType },
-      body: readFileSync(file.localPath),
-    });
-    const { storageId } = await response.json();
-    
-    convexRun("staticHosting:recordAsset", {
-      path: file.path,
-      storageId,
-      contentType: file.contentType,
-      deploymentId,
-    });
-    console.log(`  ✓ ${file.path}`);
-  }
-
-  const deleted = JSON.parse(convexRun("staticHosting:gcOldAssets", { currentDeploymentId: deploymentId }));
-  console.log(`Cleaned up ${deleted} old files`);
-}
-
-main().catch(console.error);
-```
-
-### 4. Add scripts to package.json
+### 3. Add deploy script to package.json
 
 ```json
 {
   "scripts": {
     "build": "vite build",
-    "upload:static": "npx tsx scripts/upload-static.ts",
-    "deploy:static": "npm run build && npm run upload:static"
+    "deploy:static": "npm run build && npx @get-convex/self-static-hosting upload"
   }
 }
 ```
 
-### 5. Update your app's entry point (optional)
+The CLI will automatically find your `dist/` directory and upload to the `staticHosting` module.
+
+**CLI Options:**
+```bash
+npx @get-convex/self-static-hosting upload [options]
+
+Options:
+  -d, --dist <path>     Path to dist directory (default: ./dist)
+  -m, --module <name>   Convex module name (default: staticHosting)
+  -h, --help            Show help
+```
+
+### 4. Update your app's entry point (optional)
 
 In your `main.tsx`, use the helper to auto-detect the Convex URL when deployed:
 

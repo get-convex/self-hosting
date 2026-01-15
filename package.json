@@ -13,12 +13,15 @@
     "component"
   ],
   "type": "module",
+  "bin": {
+    "self-static-hosting": "./dist/cli/upload.js"
+  },
   "scripts": {
     "dev": "run-p -r 'dev:*'",
     "dev:backend": "convex dev --typecheck-components",
     "dev:frontend": "cd example && vite --clearScreen false",
     "build:example": "cd example && vite build",
-    "upload:static": "cd example && npx tsx scripts/upload-static.ts",
+    "upload:static": "node dist/cli/upload.js --dist ./example/dist --module example",
     "deploy:static": "npm run build:example && npm run upload:static",
     "dev:build": "chokidar 'tsconfig*.json' 'src/**/*.ts' -i '**/*.test.ts' -c 'npm run build:codegen' --initial",
     "predev": "path-exists .env.local dist || (npm run build && convex dev --once)",
