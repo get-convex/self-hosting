@@ -6,15 +6,17 @@
  *   npx @get-convex/self-static-hosting upload [options]
  *
  * Options:
- *   --dist <path>      Path to dist directory (default: ./dist)
- *   --module <name>    Convex module with upload functions (default: staticHosting)
- *   --help             Show help
+ *   --dist <path>       Path to dist directory (default: ./dist)
+ *   --module <name>     Convex module with upload functions (default: staticHosting)
+ *   --domain <domain>   Domain for Cloudflare cache purge (auto-detects zone ID)
+ *   --help              Show help
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, relative, extname, resolve } from "path";
 import { randomUUID } from "crypto";
 import { execSync } from "child_process";
+import { homedir } from "os";
 
 // MIME type mapping
 const MIME_TYPES: Record<string, string> = {
@@ -43,14 +45,18 @@ function getMimeType(path: string): string {
   return MIME_TYPES[extname(path).toLowerCase()] || "application/octet-stream";
 }
 
-function parseArgs(args: string[]): {
+interface ParsedArgs {
   dist: string;
   module: string;
+  domain: string | null;
   help: boolean;
-} {
-  const result = {
+}
+
+function parseArgs(args: string[]): ParsedArgs {
+  const result: ParsedArgs = {
     dist: "./dist",
     module: "staticHosting",
+    domain: null,
     help: false,
   };
 
@@ -62,6 +68,8 @@ function parseArgs(args: string[]): {
       result.dist = args[++i] || result.dist;
     } else if (arg === "--module" || arg === "-m") {
       result.module = args[++i] || result.module;
+    } else if (arg === "--domain") {
+      result.domain = args[++i] || null;
     }
   }
 
@@ -77,27 +85,26 @@ Upload static files from a dist directory to Convex storage.
 Options:
   -d, --dist <path>     Path to dist directory (default: ./dist)
   -m, --module <name>   Convex module with upload functions (default: staticHosting)
+      --domain <name>   Domain for Cloudflare cache purge (e.g., example.com)
   -h, --help            Show this help message
+
+Cloudflare Cache Purging:
+  The CLI will automatically purge Cloudflare cache if credentials are available.
+  
+  Option 1: Use --domain flag (auto-detects zone ID)
+    Requires wrangler login or CLOUDFLARE_API_TOKEN env var
+    
+    npx @get-convex/self-static-hosting upload --domain mysite.com
+  
+  Option 2: Set environment variables (for CI/CD)
+    export CLOUDFLARE_ZONE_ID="your-zone-id"
+    export CLOUDFLARE_API_TOKEN="your-api-token"
+    npx @get-convex/self-static-hosting upload
 
 Examples:
   npx @get-convex/self-static-hosting upload
   npx @get-convex/self-static-hosting upload --dist ./build
-  npx @get-convex/self-static-hosting upload --module myStaticHosting
-
-Setup:
-  1. Create a Convex module that exposes the upload API:
-
-     // convex/staticHosting.ts
-     import { exposeUploadApi } from "@get-convex/self-static-hosting";
-     import { components } from "./_generated/api";
-
-     export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
-       exposeUploadApi(components.selfStaticHosting);
-
-  2. Run the upload command after building your app:
-
-     npm run build
-     npx @get-convex/self-static-hosting upload
+  npx @get-convex/self-static-hosting upload --domain mysite.com
 `);
 }
 
@@ -143,6 +150,122 @@ function collectFiles(
     }
   }
   return files;
+}
+
+/**
+ * Try to get Cloudflare API token from various sources:
+ * 1. CLOUDFLARE_API_TOKEN environment variable
+ * 2. Wrangler config file (~/.wrangler/config/default.toml)
+ */
+function getCloudflareApiToken(): string | null {
+  // Check environment variable first
+  if (process.env.CLOUDFLARE_API_TOKEN) {
+    return process.env.CLOUDFLARE_API_TOKEN;
+  }
+
+  // Try to read from wrangler config
+  const wranglerConfigPath = join(
+    homedir(),
+    ".wrangler",
+    "config",
+    "default.toml",
+  );
+  if (existsSync(wranglerConfigPath)) {
+    try {
+      const config = readFileSync(wranglerConfigPath, "utf-8");
+      // Look for oauth_token in the TOML file
+      const tokenMatch = config.match(/oauth_token\s*=\s*"([^"]+)"/);
+      if (tokenMatch) {
+        return tokenMatch[1];
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Look up Cloudflare zone ID for a domain using the API
+ */
+async function getCloudflareZoneId(
+  domain: string,
+  apiToken: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(domain)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const data = (await response.json()) as {
+      success: boolean;
+      result: Array<{ id: string; name: string }>;
+    };
+
+    if (data.success && data.result.length > 0) {
+      return data.result[0].id;
+    }
+
+    // Try parent domain if subdomain didn't match
+    const parts = domain.split(".");
+    if (parts.length > 2) {
+      const parentDomain = parts.slice(-2).join(".");
+      const parentResponse = await fetch(
+        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(parentDomain)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      const parentData = (await parentResponse.json()) as {
+        success: boolean;
+        result: Array<{ id: string; name: string }>;
+      };
+      if (parentData.success && parentData.result.length > 0) {
+        return parentData.result[0].id;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Purge Cloudflare cache using the API directly
+ */
+async function purgeCloudflareCache(
+  zoneId: string,
+  apiToken: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ purge_everything: true }),
+      },
+    );
+
+    const data = (await response.json()) as { success: boolean };
+    return data.success;
+  } catch {
+    return false;
+  }
 }
 
 async function main(): Promise<void> {
@@ -211,22 +334,55 @@ async function main(): Promise<void> {
     console.log(`Cleaned up ${deleted} old file(s) from previous deployments`);
   }
 
-  // Optional: Purge Cloudflare cache if configured
+  // Cloudflare cache purging
+  let cachePurged = false;
   const cloudflareZoneId = process.env.CLOUDFLARE_ZONE_ID;
-  const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const cloudflareApiToken = getCloudflareApiToken();
 
-  if (cloudflareZoneId && cloudflareApiToken) {
+  // Option 1: Use --domain flag with auto-detected credentials
+  if (args.domain && cloudflareApiToken) {
+    console.log("");
+    console.log(`☁️  Purging Cloudflare cache for ${args.domain}...`);
+
+    const zoneId = await getCloudflareZoneId(args.domain, cloudflareApiToken);
+    if (zoneId) {
+      const success = await purgeCloudflareCache(zoneId, cloudflareApiToken);
+      if (success) {
+        console.log("   Cache purged successfully");
+        cachePurged = true;
+      } else {
+        console.warn("   Warning: Cache purge failed");
+      }
+    } else {
+      console.warn(`   Warning: Could not find zone for domain ${args.domain}`);
+      console.warn("   Make sure the domain is in your Cloudflare account");
+    }
+  }
+  // Option 2: Use explicit env vars (for CI/CD)
+  else if (cloudflareZoneId && cloudflareApiToken && !cachePurged) {
     console.log("");
     console.log("☁️  Purging Cloudflare cache...");
     try {
+      // Use Convex function (useful for CI/CD where you might want logging)
       convexRun(`${moduleName}:purgeCloudflareCache`, {
         zoneId: cloudflareZoneId,
         apiToken: cloudflareApiToken,
         purgeAll: true,
       });
       console.log("   Cache purged successfully");
+      cachePurged = true;
     } catch {
-      console.warn("   Warning: Cloudflare cache purge failed (function may not be exposed)");
+      // Fall back to direct API call
+      const success = await purgeCloudflareCache(
+        cloudflareZoneId,
+        cloudflareApiToken,
+      );
+      if (success) {
+        console.log("   Cache purged successfully (direct API)");
+        cachePurged = true;
+      } else {
+        console.warn("   Warning: Cloudflare cache purge failed");
+      }
     }
   }
 
@@ -246,11 +402,10 @@ async function main(): Promise<void> {
     }
   }
 
-  if (!cloudflareZoneId || !cloudflareApiToken) {
+  if (!cachePurged && !args.domain) {
     console.log("");
-    console.log(
-      "💡 Tip: Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN to enable CDN cache purging",
-    );
+    console.log("💡 Tip: Add --domain yoursite.com to auto-purge Cloudflare cache");
+    console.log("   (requires 'npx wrangler login' or CLOUDFLARE_API_TOKEN)");
   }
 }
 

@@ -21,6 +21,18 @@ Install the component:
 npm install @get-convex/self-static-hosting
 ```
 
+### Quick Start with LLM
+
+Get comprehensive integration instructions to paste into your AI assistant:
+
+```bash
+npx @get-convex/self-static-hosting init
+```
+
+This outputs all the code you need to integrate the component.
+
+### Manual Setup
+
 Add to your `convex/convex.config.ts`:
 
 ```ts
@@ -86,6 +98,7 @@ npx @get-convex/self-static-hosting upload [options]
 Options:
   -d, --dist <path>     Path to dist directory (default: ./dist)
   -m, --module <name>   Convex module name (default: staticHosting)
+      --domain <name>   Domain for Cloudflare cache purge (auto-detects zone ID)
   -h, --help            Show help
 ```
 
@@ -190,29 +203,48 @@ Your app will be available at `https://yourdomain.com/app/`
    - `/app/assets/*` → Cache Level: Cache Everything, Edge TTL: 1 year
    - `/app/*` → Cache Level: Cache Everything, Edge TTL: 1 day
 
-### Optional: Cache Purging
+### Cache Purging
 
-To automatically purge Cloudflare cache on deploy:
+The CLI can automatically purge Cloudflare cache after deploying.
 
-1. **Expose the cache purge action** in your `convex/staticHosting.ts`:
-   ```ts
-   import { exposeCachePurgeAction } from "@get-convex/self-static-hosting";
-   
-   export const { purgeCloudflareCache } = exposeCachePurgeAction();
-   ```
+**Option 1: Use `--domain` flag (easiest)**
 
-2. **Get your Cloudflare credentials**:
-   - Zone ID: Found on your domain's overview page
-   - API Token: Create one at Account > API Tokens with "Cache Purge" permission
+```bash
+# First, login to Cloudflare via wrangler
+npx wrangler login
 
-3. **Set environment variables** before deploying:
-   ```bash
-   export CLOUDFLARE_ZONE_ID="your-zone-id"
-   export CLOUDFLARE_API_TOKEN="your-api-token"
-   npm run deploy:static
-   ```
+# Then deploy with your domain
+npx @get-convex/self-static-hosting upload --domain mysite.com
+```
 
-The deploy script will automatically purge the cache after uploading new files.
+The CLI will auto-detect your zone ID and purge the cache.
+
+**Option 2: Environment variables (for CI/CD)**
+
+```bash
+export CLOUDFLARE_ZONE_ID="your-zone-id"
+export CLOUDFLARE_API_TOKEN="your-api-token"
+npx @get-convex/self-static-hosting upload
+```
+
+To get these values:
+- Zone ID: Found on your domain's overview page in Cloudflare
+- API Token: Create at Account → API Tokens with "Cache Purge" permission
+
+**Option 3: Via Convex function (for advanced CI/CD)**
+
+Expose the cache purge action in your `convex/staticHosting.ts`:
+```ts
+import { exposeCachePurgeAction } from "@get-convex/self-static-hosting";
+
+export const { purgeCloudflareCache } = exposeCachePurgeAction();
+```
+
+Then call it from your CI/CD pipeline:
+```bash
+npx convex run staticHosting:purgeCloudflareCache \
+  '{"zoneId": "...", "apiToken": "...", "purgeAll": true}'
+```
 
 ## Live Reload on Deploy
 
