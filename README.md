@@ -2,17 +2,21 @@
 
 [![npm version](https://badge.fury.io/js/@get-convex%2Fself-static-hosting.svg)](https://badge.fury.io/js/@get-convex/self-static-hosting)
 
-A Convex component that enables self-hosting static React/Vite apps using Convex HTTP actions and file storage. No external hosting provider required!
+A Convex component that enables self-hosting static React/Vite apps using Convex
+HTTP actions and file storage. No external hosting provider required!
 
 ## Features
 
 - 🚀 **Simple deployment** - Upload your built files directly to Convex storage
-- 🔒 **Secure by default** - Upload API uses internal functions (not publicly accessible)
+- 🔒 **Secure by default** - Upload API uses internal functions (not publicly
+  accessible)
 - 🔄 **SPA support** - Automatic fallback to index.html for client-side routing
-- ⚡ **Smart caching** - Hashed assets get long-term caching, HTML is always fresh with ETag support
+- ⚡ **Smart caching** - Hashed assets get long-term caching, HTML is always
+  fresh with ETag support
 - 🧹 **Auto cleanup** - Old deployment files are automatically garbage collected
 - ☁️ **Cloudflare ready** - One-command CDN setup with automatic cache purging
-- 📦 **Zero config** - Works out of the box with Vite, Create React App, and other bundlers
+- 📦 **Zero config** - Works out of the box with Vite, Create React App, and
+  other bundlers
 
 ## Installation
 
@@ -90,9 +94,11 @@ export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
 }
 ```
 
-The CLI will automatically find your `dist/` directory and upload to the `staticHosting` component.
+The CLI will automatically find your `dist/` directory and upload to the
+`staticHosting` component.
 
 **CLI Options:**
+
 ```bash
 npx @get-convex/self-static-hosting upload [options]
 
@@ -119,14 +125,17 @@ npm run deploy:static
 ## Security
 
 The upload API uses **internal functions** that can only be called via:
+
 - `npx convex run` (requires Convex CLI authentication)
 - Other Convex functions (server-side only)
 
-This means unauthorized users **cannot** upload files to your site, even if they know your Convex URL.
+This means unauthorized users **cannot** upload files to your site, even if they
+know your Convex URL.
 
 ## CDN Setup (Cloudflare)
 
-For production deployments, put Cloudflare in front of your Convex static site for edge caching, compression, DDoS protection, and custom domains.
+For production deployments, put Cloudflare in front of your Convex static site
+for edge caching, compression, DDoS protection, and custom domains.
 
 ### Quick Setup (Recommended)
 
@@ -135,6 +144,7 @@ npx @get-convex/self-static-hosting setup-cloudflare
 ```
 
 This interactive wizard will:
+
 1. Login to Cloudflare (via wrangler)
 2. Let you select or add a domain
 3. Configure DNS pointing to your Convex site
@@ -147,15 +157,16 @@ Then just deploy - cache is automatically purged!
 
 ### Cache Behavior
 
-| File Type | Cache-Control | ETag | CDN Behavior |
-|-----------|---------------|------|--------------|
-| `*.js`, `*.css` (hashed) | `max-age=1yr, immutable` | ✓ | Cached forever, new hash = new URL |
-| `index.html` | `must-revalidate` | ✓ | Revalidates with 304 support |
-| Images, fonts | `max-age=1yr, immutable` | ✓ | Cached long-term |
+| File Type                | Cache-Control            | ETag | CDN Behavior                       |
+| ------------------------ | ------------------------ | ---- | ---------------------------------- |
+| `*.js`, `*.css` (hashed) | `max-age=1yr, immutable` | ✓    | Cached forever, new hash = new URL |
+| `index.html`             | `must-revalidate`        | ✓    | Revalidates with 304 support       |
+| Images, fonts            | `max-age=1yr, immutable` | ✓    | Cached long-term                   |
 
 ### Recommended: Use a Path Prefix
 
-When using Cloudflare, serve static files from a dedicated path (e.g., `/app/`) so your API routes remain unaffected:
+When using Cloudflare, serve static files from a dedicated path (e.g., `/app/`)
+so your API routes remain unaffected:
 
 ```ts
 // convex/http.ts
@@ -181,6 +192,7 @@ export default http;
 ```
 
 This lets you configure Cloudflare Page Rules separately:
+
 - `/app/*` → Cache Everything, Edge TTL: 1 month
 - `/api/*` → Bypass Cache
 
@@ -191,6 +203,7 @@ Your app will be available at `https://yourdomain.com/app/`
 1. **Add your site to Cloudflare** and update your domain's nameservers
 
 2. **Create a CNAME record** pointing to your Convex site:
+
    ```
    Type: CNAME
    Name: @ (or subdomain)
@@ -229,12 +242,14 @@ npx @get-convex/self-static-hosting upload
 ```
 
 To get these values:
+
 - Zone ID: Found on your domain's overview page in Cloudflare
 - API Token: Create at Account → API Tokens with "Cache Purge" permission
 
 **Option 3: Via Convex function (for advanced CI/CD)**
 
 Expose the cache purge action in your `convex/staticHosting.ts`:
+
 ```ts
 import { exposeCachePurgeAction } from "@get-convex/self-static-hosting";
 
@@ -242,6 +257,7 @@ export const { purgeCloudflareCache } = exposeCachePurgeAction();
 ```
 
 Then call it from your CI/CD pipeline:
+
 ```bash
 npx convex run staticHosting:purgeCloudflareCache \
   '{"zoneId": "...", "apiToken": "...", "purgeAll": true}'
@@ -252,19 +268,22 @@ npx convex run staticHosting:purgeCloudflareCache \
 Connected clients can be notified when a new deployment is available:
 
 1. **Expose the deployment query**:
+
    ```ts
    import { exposeDeploymentQuery } from "@get-convex/self-static-hosting";
    import { components } from "./_generated/api";
-   
-   export const { getCurrentDeployment } = 
-     exposeDeploymentQuery(components.selfStaticHosting);
+
+   export const { getCurrentDeployment } = exposeDeploymentQuery(
+     components.selfStaticHosting,
+   );
    ```
 
 2. **Add the update banner to your app**:
+
    ```tsx
    import { UpdateBanner } from "@get-convex/self-static-hosting/react";
    import { api } from "../convex/_generated/api";
-   
+
    function App() {
      return (
        <div>
@@ -280,11 +299,12 @@ Connected clients can be notified when a new deployment is available:
    ```
 
 Or use the hook for custom UI:
+
 ```tsx
 import { useDeploymentUpdates } from "@get-convex/self-static-hosting/react";
 
 const { updateAvailable, reload, dismiss } = useDeploymentUpdates(
-  api.staticHosting.getCurrentDeployment
+  api.staticHosting.getCurrentDeployment,
 );
 ```
 
@@ -296,7 +316,7 @@ const { updateAvailable, reload, dismiss } = useDeploymentUpdates(
 registerStaticRoutes(http, components.selfStaticHosting, {
   // URL prefix for static files (default: "/")
   pathPrefix: "/app",
-  
+
   // Enable SPA fallback to index.html (default: true)
   spaFallback: true,
 });
