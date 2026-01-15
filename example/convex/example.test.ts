@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { initConvexTest } from "./setup.test";
-import { api } from "./_generated/api";
+import { internal } from "./_generated/api";
 
-describe("static hosting example", () => {
+describe("static hosting example (internal functions)", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
   });
@@ -13,20 +13,20 @@ describe("static hosting example", () => {
 
   test("generateUploadUrl returns a URL", async () => {
     const t = initConvexTest();
-    const uploadUrl = await t.mutation(api.example.generateUploadUrl, {});
+    const uploadUrl = await t.mutation(internal.example.generateUploadUrl, {});
     expect(uploadUrl).toBeDefined();
     expect(typeof uploadUrl).toBe("string");
   });
 
   test("listAssets returns empty array initially", async () => {
     const t = initConvexTest();
-    const assets = await t.query(api.example.listAssets, {});
+    const assets = await t.query(internal.example.listAssets, {});
     expect(assets).toHaveLength(0);
   });
 
   test("gcOldAssets returns 0 with no assets", async () => {
     const t = initConvexTest();
-    const deleted = await t.mutation(api.example.gcOldAssets, {
+    const deleted = await t.mutation(internal.example.gcOldAssets, {
       currentDeploymentId: "test-deployment",
     });
     expect(deleted).toBe(0);

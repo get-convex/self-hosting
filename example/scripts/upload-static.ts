@@ -4,22 +4,21 @@
  * Usage:
  *   npx tsx scripts/upload-static.ts
  *
- * The script automatically reads CONVEX_URL from:
- *   1. Environment variable CONVEX_URL
- *   2. .env.local file in the project root
+ * This script uses `npx convex run` to call INTERNAL functions,
+ * which means it requires Convex CLI authentication (not just a URL).
+ * This is more secure than exposing public mutations.
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, relative, dirname, extname } from "path";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api.js";
-import type { Id } from "../convex/_generated/dataModel.js";
+import { execSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(__dirname, "..");
-const distDir = join(projectRoot, "dist");
+const exampleDir = join(__dirname, "..");
+const repoRoot = join(exampleDir, "..");
+const distDir = join(exampleDir, "dist");
 
 // MIME type mapping
 const MIME_TYPES: Record<string, string> = {
@@ -49,65 +48,27 @@ function getMimeType(path: string): string {
 }
 
 /**
- * Read CONVEX_URL from .env.local file
+ * Run a Convex function using the CLI
  */
-function readEnvLocal(): string | undefined {
-  // Check multiple possible locations for .env.local
-  const possiblePaths = [
-    join(projectRoot, ".env.local"),
-    join(projectRoot, "..", ".env.local"), // Root of monorepo
-  ];
-
-  for (const envPath of possiblePaths) {
-    if (existsSync(envPath)) {
-      const content = readFileSync(envPath, "utf-8");
-      // Check for CONVEX_URL or VITE_CONVEX_URL
-      const patterns = [
-        /^CONVEX_URL=(.+)$/m,
-        /^VITE_CONVEX_URL=(.+)$/m,
-      ];
-      for (const pattern of patterns) {
-        const match = content.match(pattern);
-        if (match) {
-          // Remove quotes if present
-          return match[1].replace(/^["']|["']$/g, "").trim();
-        }
-      }
-    }
+function convexRun(
+  functionPath: string,
+  args: Record<string, unknown> = {},
+): string {
+  const argsJson = JSON.stringify(args);
+  const cmd = `npx convex run "${functionPath}" '${argsJson}' --typecheck=disable --codegen=disable`;
+  try {
+    const result = execSync(cmd, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    // Parse the output - convex run outputs the result as JSON
+    return result.trim();
+  } catch (error) {
+    const execError = error as { stderr?: string; stdout?: string };
+    console.error("Convex run failed:", execError.stderr || execError.stdout);
+    throw error;
   }
-  return undefined;
-}
-
-/**
- * Get Convex URL from environment or .env.local
- */
-function getConvexUrl(): string {
-  // First check environment variables
-  if (process.env.CONVEX_URL) {
-    return process.env.CONVEX_URL;
-  }
-  if (process.env.VITE_CONVEX_URL) {
-    return process.env.VITE_CONVEX_URL;
-  }
-
-  // Then check .env.local
-  const envLocalUrl = readEnvLocal();
-  if (envLocalUrl) {
-    console.log("Using CONVEX_URL from .env.local");
-    return envLocalUrl;
-  }
-
-  console.error("Error: CONVEX_URL not found");
-  console.error("");
-  console.error("Please either:");
-  console.error("  1. Set CONVEX_URL environment variable:");
-  console.error(
-    "     CONVEX_URL=https://your-deployment.convex.cloud npx tsx scripts/upload-static.ts",
-  );
-  console.error("");
-  console.error("  2. Or ensure .env.local exists with CONVEX_URL defined");
-  console.error("     (Run 'npx convex dev' first to create it)");
-  process.exit(1);
 }
 
 // Recursively collect files
@@ -137,8 +98,6 @@ function collectFiles(
 }
 
 async function main() {
-  const convexUrl = getConvexUrl();
-
   if (!existsSync(distDir)) {
     console.error(
       "Error: dist directory not found. Run 'npm run build' first.",
@@ -146,11 +105,10 @@ async function main() {
     process.exit(1);
   }
 
-  const client = new ConvexHttpClient(convexUrl);
   const deploymentId = randomUUID();
   const files = collectFiles(distDir, distDir);
 
-  console.log(`Deploying to: ${convexUrl}`);
+  console.log("🔒 Using secure internal functions (requires Convex CLI auth)");
   console.log(
     `Uploading ${files.length} files with deployment ID: ${deploymentId}`,
   );
@@ -159,22 +117,22 @@ async function main() {
   for (const file of files) {
     const content = readFileSync(file.localPath);
 
-    // Get upload URL
-    const uploadUrl = await client.mutation(api.example.generateUploadUrl);
+    // Get upload URL via internal function
+    const uploadUrlOutput = convexRun("example:generateUploadUrl");
+    // Parse the JSON string output (convex run returns JSON)
+    const uploadUrl = JSON.parse(uploadUrlOutput);
 
-    // Upload to storage
+    // Upload to storage (this still uses fetch - it's a signed URL)
     const response = await fetch(uploadUrl, {
       method: "POST",
       headers: { "Content-Type": file.contentType },
       body: content,
     });
 
-    const { storageId } = (await response.json()) as {
-      storageId: Id<"_storage">;
-    };
+    const { storageId } = (await response.json()) as { storageId: string };
 
-    // Record in database
-    await client.mutation(api.example.recordAsset, {
+    // Record in database via internal function
+    convexRun("example:recordAsset", {
       path: file.path,
       storageId,
       contentType: file.contentType,
@@ -186,10 +144,11 @@ async function main() {
 
   console.log("");
 
-  // Garbage collect old files
-  const deleted = await client.mutation(api.example.gcOldAssets, {
+  // Garbage collect old files via internal function
+  const deletedOutput = convexRun("example:gcOldAssets", {
     currentDeploymentId: deploymentId,
   });
+  const deleted = JSON.parse(deletedOutput);
 
   if (deleted > 0) {
     console.log(`Cleaned up ${deleted} old file(s) from previous deployments`);
@@ -198,9 +157,19 @@ async function main() {
   console.log("");
   console.log("✨ Upload complete!");
   console.log("");
-  console.log(
-    `Your app is now available at: ${convexUrl.replace(".convex.cloud", ".convex.site")}`,
-  );
+
+  // Read the deployment URL from .env.local
+  const envPath = join(repoRoot, ".env.local");
+  if (existsSync(envPath)) {
+    const envContent = readFileSync(envPath, "utf-8");
+    const match = envContent.match(/VITE_CONVEX_URL=(.+)/);
+    if (match) {
+      const convexUrl = match[1].trim();
+      console.log(
+        `Your app is now available at: ${convexUrl.replace(".convex.cloud", ".convex.site")}`,
+      );
+    }
+  }
 }
 
 main().catch((error) => {

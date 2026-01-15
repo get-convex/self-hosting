@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { UpdateBanner } from "@get-convex/self-static-hosting/react";
+import { api } from "../convex/_generated/api";
 import "./App.css";
 
 function App() {
@@ -6,6 +8,13 @@ function App() {
 
   return (
     <div className="app">
+      {/* Shows a banner when a new deployment is available */}
+      <UpdateBanner
+        getCurrentDeployment={api.example.getCurrentDeployment}
+        message="🚀 New version deployed!"
+        buttonText="Refresh"
+      />
+
       <header className="header">
         <h1>🚀 Convex Static Hosting</h1>
         <p className="subtitle">Self-hosted React app on Convex</p>
@@ -38,10 +47,10 @@ function App() {
 
           <div className="feature">
             <span className="icon">🔄</span>
-            <h3>SPA Support</h3>
+            <h3>Live Reload</h3>
             <p>
-              Client-side routing works out of the box with automatic fallback
-              to index.html
+              Connected clients are notified when you deploy - with a prompt to
+              reload
             </p>
           </div>
 

@@ -39,10 +39,10 @@ describe("component lib", () => {
   test("gc removes old assets", async () => {
     const t = initConvexTest();
 
-    // GC with no assets should return 0
-    const deleted = await t.mutation(api.lib.gcOldAssets, {
+    // GC with no assets should return empty array
+    const storageIds = await t.mutation(api.lib.gcOldAssets, {
       currentDeploymentId: "test-deployment",
     });
-    expect(deleted).toBe(0);
+    expect(storageIds).toHaveLength(0);
   });
 });

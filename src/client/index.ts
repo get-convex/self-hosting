@@ -1,5 +1,10 @@
-import { httpActionGeneric, mutationGeneric, queryGeneric } from "convex/server";
-import type { Auth, HttpRouter } from "convex/server";
+import {
+  httpActionGeneric,
+  internalMutationGeneric,
+  internalQueryGeneric,
+  queryGeneric,
+} from "convex/server";
+import type { HttpRouter } from "convex/server";
 import { v } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 
@@ -176,12 +181,10 @@ export function registerStaticRoutes(
 }
 
 /**
- * Expose the upload API for use in deployment scripts.
- * This creates mutations that can be called from a Node.js upload script.
+ * Expose the upload API as INTERNAL functions for secure deployments.
+ * These functions can only be called via `npx convex run` or from other Convex functions.
  *
  * @param component - The component API reference
- * @param options - Configuration options
- * @param options.auth - Optional authentication function to restrict uploads
  *
  * @example
  * ```typescript
@@ -192,32 +195,21 @@ export function registerStaticRoutes(
  * export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
  *   exposeUploadApi(components.selfStaticHosting);
  * ```
+ *
+ * Then deploy using:
+ * ```bash
+ * npm run deploy:static
+ * ```
  */
-export function exposeUploadApi(
-  component: ComponentApi,
-  options?: {
-    /**
-     * Optional authentication function.
-     * If provided, will be called before each operation.
-     * Throw an error to deny access.
-     */
-    auth?: (ctx: { auth: Auth }) => Promise<void>;
-  },
-) {
-  const authCheck = options?.auth ?? (async () => {});
-
+export function exposeUploadApi(component: ComponentApi) {
   return {
     /**
      * Generate a signed URL for uploading a file.
-     * Files are stored in the app's storage (not the component's) so the
-     * HTTP handler can access them directly.
+     * Files are stored in the app's storage (not the component's).
      */
-    generateUploadUrl: mutationGeneric({
+    generateUploadUrl: internalMutationGeneric({
       args: {},
       handler: async (ctx) => {
-        await authCheck(ctx);
-        // Use app's storage directly, not the component's storage
-        // This ensures the HTTP handler can access the files
         return await ctx.storage.generateUploadUrl();
       },
     }),
@@ -226,7 +218,7 @@ export function exposeUploadApi(
      * Record an uploaded asset in the database.
      * Automatically cleans up old storage files when replacing.
      */
-    recordAsset: mutationGeneric({
+    recordAsset: internalMutationGeneric({
       args: {
         path: v.string(),
         storageId: v.string(),
@@ -234,21 +226,17 @@ export function exposeUploadApi(
         deploymentId: v.string(),
       },
       handler: async (ctx, args) => {
-        await authCheck(ctx);
-        // Record the asset and get back any old storageId to clean up
         const oldStorageId = await ctx.runMutation(component.lib.recordAsset, {
           path: args.path,
           storageId: args.storageId,
           contentType: args.contentType,
           deploymentId: args.deploymentId,
         });
-        // Delete old file from app storage if one was replaced
-        // Note: May fail if old file was in component storage (migration case)
         if (oldStorageId) {
           try {
             await ctx.storage.delete(oldStorageId);
           } catch {
-            // Ignore errors - old file may have been in component storage
+            // Ignore - old file may have been in different storage
           }
         }
         return null;
@@ -256,31 +244,34 @@ export function exposeUploadApi(
     }),
 
     /**
-     * Garbage collect old assets that don't match the current deployment.
+     * Garbage collect old assets and notify clients of the new deployment.
      * Returns the count of deleted assets.
+     * Also triggers connected clients to reload via the deployment subscription.
      */
-    gcOldAssets: mutationGeneric({
+    gcOldAssets: internalMutationGeneric({
       args: {
         currentDeploymentId: v.string(),
       },
       handler: async (ctx, args) => {
-        await authCheck(ctx);
-        // Get storageIds of old assets to delete
         const storageIdsToDelete = await ctx.runMutation(
           component.lib.gcOldAssets,
           {
             currentDeploymentId: args.currentDeploymentId,
           },
         );
-        // Delete files from app storage
-        // Note: May fail for files in component storage (migration case)
         for (const storageId of storageIdsToDelete) {
           try {
             await ctx.storage.delete(storageId);
           } catch {
-            // Ignore errors - old file may have been in component storage
+            // Ignore - old file may have been in different storage
           }
         }
+
+        // Update deployment info to trigger client reloads
+        await ctx.runMutation(component.lib.setCurrentDeployment, {
+          deploymentId: args.currentDeploymentId,
+        });
+
         return storageIdsToDelete.length;
       },
     }),
@@ -288,7 +279,7 @@ export function exposeUploadApi(
     /**
      * List all static assets (for debugging).
      */
-    listAssets: queryGeneric({
+    listAssets: internalQueryGeneric({
       args: {
         limit: v.optional(v.number()),
       },
@@ -296,6 +287,39 @@ export function exposeUploadApi(
         return await ctx.runQuery(component.lib.listAssets, {
           limit: args.limit,
         });
+      },
+    }),
+  };
+}
+
+/**
+ * Expose a query that clients can subscribe to for live reload on deploy.
+ * When a new deployment happens, subscribed clients will be notified.
+ *
+ * @param component - The component API reference
+ *
+ * @example
+ * ```typescript
+ * // In your convex/staticHosting.ts
+ * import { exposeUploadApi, exposeDeploymentQuery } from "@get-convex/self-static-hosting";
+ * import { components } from "./_generated/api";
+ *
+ * export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
+ *   exposeUploadApi(components.selfStaticHosting);
+ *
+ * export const { getCurrentDeployment } = exposeDeploymentQuery(components.selfStaticHosting);
+ * ```
+ */
+export function exposeDeploymentQuery(component: ComponentApi) {
+  return {
+    /**
+     * Get the current deployment info.
+     * Subscribe to this query to detect when a new deployment happens.
+     */
+    getCurrentDeployment: queryGeneric({
+      args: {},
+      handler: async (ctx) => {
+        return await ctx.runQuery(component.lib.getCurrentDeployment, {});
       },
     }),
   };

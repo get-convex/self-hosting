@@ -52,6 +52,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         } | null,
         Name
       >;
+      getCurrentDeployment: FunctionReference<
+        "query",
+        "internal",
+        {},
+        {
+          _creationTime: number;
+          _id: string;
+          currentDeploymentId: string;
+          deployedAt: number;
+        } | null,
+        Name
+      >;
       listAssets: FunctionReference<
         "query",
         "internal",
@@ -76,6 +88,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           storageId: string;
         },
         string | null,
+        Name
+      >;
+      setCurrentDeployment: FunctionReference<
+        "mutation",
+        "internal",
+        { deploymentId: string },
+        null,
         Name
       >;
     };

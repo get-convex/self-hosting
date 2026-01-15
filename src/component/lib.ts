@@ -3,9 +3,13 @@ import { mutation, query, internalMutation } from "./_generated/server.js";
 import schema from "./schema.js";
 
 // Validator for static asset documents (including system fields)
-const staticAssetValidator = schema.tables.staticAssets.validator.extend({
+const staticAssetValidator = v.object({
   _id: v.id("staticAssets"),
   _creationTime: v.number(),
+  path: v.string(),
+  storageId: v.id("_storage"),
+  contentType: v.string(),
+  deploymentId: v.string(),
 });
 
 /**
@@ -135,5 +139,59 @@ export const deleteAllAssets = internalMutation({
     }
 
     return storageIds as unknown as Array<ReturnType<typeof v.id<"_storage">>["type"]>;
+  },
+});
+
+// ============================================================================
+// Deployment Tracking - for live reload on deploy
+// ============================================================================
+
+const deploymentInfoValidator = v.object({
+  _id: v.id("deploymentInfo"),
+  _creationTime: v.number(),
+  currentDeploymentId: v.string(),
+  deployedAt: v.number(),
+});
+
+/**
+ * Get the current deployment info.
+ * Clients subscribe to this to detect when a new deployment happens.
+ */
+export const getCurrentDeployment = query({
+  args: {},
+  returns: v.union(deploymentInfoValidator, v.null()),
+  handler: async (ctx) => {
+    return await ctx.db.query("deploymentInfo").first();
+  },
+});
+
+/**
+ * Update the current deployment ID.
+ * Called after a successful deployment to notify all connected clients.
+ */
+export const setCurrentDeployment = mutation({
+  args: {
+    deploymentId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Get existing deployment info
+    const existing = await ctx.db.query("deploymentInfo").first();
+
+    if (existing) {
+      // Update existing record
+      await ctx.db.patch(existing._id, {
+        currentDeploymentId: args.deploymentId,
+        deployedAt: Date.now(),
+      });
+    } else {
+      // Create new record
+      await ctx.db.insert("deploymentInfo", {
+        currentDeploymentId: args.deploymentId,
+        deployedAt: Date.now(),
+      });
+    }
+
+    return null;
   },
 });

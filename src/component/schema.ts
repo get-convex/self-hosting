@@ -10,4 +10,11 @@ export default defineSchema({
   })
     .index("by_path", ["path"])
     .index("by_deploymentId", ["deploymentId"]),
+
+  // Singleton table to track the current deployment
+  // Clients subscribe to this to know when to reload
+  deploymentInfo: defineTable({
+    currentDeploymentId: v.string(),
+    deployedAt: v.number(), // timestamp
+  }),
 });
