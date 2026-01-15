@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server.js";
-import schema from "./schema.js";
 
 // Validator for static asset documents (including system fields)
 const staticAssetValidator = v.object({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { useState, useMemo } from "react";
 import type { FunctionReference } from "convex/server";
 
 type DeploymentInfo = {
@@ -46,34 +46,36 @@ export function useDeploymentUpdates(
   getCurrentDeployment: FunctionReference<"query", "public", Record<string, never>, DeploymentInfo>,
 ) {
   const deployment = useQuery(getCurrentDeployment, {});
-  const initialDeploymentId = useRef<string | null>(null);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [initialDeploymentId, setInitialDeploymentId] = useState<string | null>(null);
+  const [dismissedDeploymentId, setDismissedDeploymentId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!deployment) return;
+  // Capture the initial deployment ID on first load
+  // Using useState with functional update to avoid stale closure issues
+  if (deployment && initialDeploymentId === null) {
+    // This is safe - we're setting initial state based on first data load
+    // It only runs once when deployment first becomes available
+    setInitialDeploymentId(deployment.currentDeploymentId);
+  }
 
-    // Store the initial deployment ID on first load
-    if (initialDeploymentId.current === null) {
-      initialDeploymentId.current = deployment.currentDeploymentId;
-      return;
+  // Derive updateAvailable from current state
+  const updateAvailable = useMemo(() => {
+    if (!deployment || initialDeploymentId === null) {
+      return false;
     }
-
-    // Check if deployment changed
-    if (deployment.currentDeploymentId !== initialDeploymentId.current) {
-      setUpdateAvailable(true);
-    }
-  }, [deployment]);
+    // Show update if deployment changed from initial AND user hasn't dismissed this one
+    const hasNewDeployment = deployment.currentDeploymentId !== initialDeploymentId;
+    const isDismissed = deployment.currentDeploymentId === dismissedDeploymentId;
+    return hasNewDeployment && !isDismissed;
+  }, [deployment, initialDeploymentId, dismissedDeploymentId]);
 
   const reload = () => {
     window.location.reload();
   };
 
   const dismiss = () => {
-    // Update the stored deployment ID so we don't show the banner again
     if (deployment) {
-      initialDeploymentId.current = deployment.currentDeploymentId;
+      setDismissedDeploymentId(deployment.currentDeploymentId);
     }
-    setUpdateAvailable(false);
   };
 
   return {
