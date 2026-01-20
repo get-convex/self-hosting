@@ -492,93 +492,57 @@ CLOUDFLARE_DOMAIN=${domain}
 }
 
 /**
- * Save Cloudflare Pages project to .env.local
+ * Save Cloudflare Worker name to .env.local
  */
-function savePagesProjectToEnv(projectName: string): void {
+function saveWorkerNameToEnv(workerName: string): void {
   const envFile = ".env.local";
-  const newVar = `CLOUDFLARE_PAGES_PROJECT=${projectName}`;
+  const newVar = `CLOUDFLARE_WORKER_NAME=${workerName}`;
 
   if (existsSync(envFile)) {
     const content = readFileSync(envFile, "utf-8");
-    if (content.includes("CLOUDFLARE_PAGES_PROJECT")) {
+    if (content.includes("CLOUDFLARE_WORKER_NAME")) {
       // Replace existing
       const updated = content.replace(
-        /CLOUDFLARE_PAGES_PROJECT=.*/g,
+        /CLOUDFLARE_WORKER_NAME=.*/g,
         newVar,
       );
       writeFileSync(envFile, updated);
     } else {
-      appendFileSync(envFile, `\n# Cloudflare Pages Project\n${newVar}\n`);
+      appendFileSync(envFile, `\n# Cloudflare Worker Name\n${newVar}\n`);
     }
   } else {
-    writeFileSync(envFile, `# Cloudflare Pages Project\n${newVar}\n`);
+    writeFileSync(envFile, `# Cloudflare Worker Name\n${newVar}\n`);
   }
 }
 
 /**
- * Check if a Cloudflare Pages project exists
+ * Get the workers.dev subdomain for an account
  */
-async function pagesProjectExists(
+async function getWorkerSubdomain(
   accountId: string,
-  projectName: string,
   token: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const data = await cfApi(
-    `/accounts/${accountId}/pages/projects/${projectName}`,
+    `/accounts/${accountId}/workers/subdomain`,
     token,
   );
-  return data.success;
+  if (data.success && data.result) {
+    return (data.result as { subdomain: string }).subdomain;
+  }
+  return null;
 }
 
 /**
- * Create a Cloudflare Pages project
+ * Run the Cloudflare Workers setup flow
  */
-async function createPagesProject(
-  accountId: string,
-  projectName: string,
-  token: string,
-): Promise<boolean> {
-  const data = await cfApi(`/accounts/${accountId}/pages/projects`, token, {
-    method: "POST",
-    body: JSON.stringify({
-      name: projectName,
-      production_branch: "main",
-    }),
-  });
-  return data.success;
-}
-
-/**
- * Add a custom domain to a Cloudflare Pages project
- */
-async function addPagesCustomDomain(
-  accountId: string,
-  projectName: string,
-  domain: string,
-  token: string,
-): Promise<boolean> {
-  const data = await cfApi(
-    `/accounts/${accountId}/pages/projects/${projectName}/domains`,
-    token,
-    {
-      method: "POST",
-      body: JSON.stringify({ name: domain }),
-    },
-  );
-  return data.success;
-}
-
-/**
- * Run the Cloudflare Pages setup flow
- */
-async function runPagesSetup(token: string): Promise<void> {
+async function runWorkersSetup(token: string): Promise<void> {
   log("");
-  log("═══════════════════════════════════════════════════════════");
-  log("  Cloudflare Pages Setup");
-  log("═══════════════════════════════════════════════════════════");
+  log("===============================================================");
+  log("  Cloudflare Workers Setup");
+  log("===============================================================");
   log("");
-  log("Cloudflare Pages serves your static files directly from edge,");
-  log("without needing Convex storage for assets.");
+  log("Cloudflare Workers with Static Assets serves your static files");
+  log("directly from edge, without needing Convex storage for assets.");
   log("");
 
   // Get account ID
@@ -587,92 +551,43 @@ async function runPagesSetup(token: string): Promise<void> {
     error("Could not get Cloudflare account ID.");
     log("Your API token may not have account-level permissions.");
     log("");
-    log("Create an API token with 'Cloudflare Pages: Edit' permission at:");
+    log("Create an API token with 'Workers Scripts: Edit' permission at:");
     log("  https://dash.cloudflare.com/profile/api-tokens");
     rl.close();
     process.exit(1);
   }
 
-  // Get or create project name
-  log("Step 1: Setting up Pages project...");
+  // Get workers.dev subdomain
+  const subdomain = await getWorkerSubdomain(accountId, token);
+
+  // Get worker name
+  log("Step 1: Setting up Worker name...");
   log("");
-  
-  let projectName = await prompt("Enter a project name (e.g., my-app): ");
-  if (!projectName) {
-    projectName = "convex-app";
+
+  let workerName = await prompt("Enter a worker name (e.g., my-app): ");
+  if (!workerName) {
+    workerName = "convex-app";
   }
-  
-  // Sanitize project name (lowercase, alphanumeric and hyphens only)
-  projectName = projectName
+
+  // Sanitize worker name (lowercase, alphanumeric and hyphens only)
+  workerName = workerName
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 
-  // Check if project exists
-  const exists = await pagesProjectExists(accountId, projectName, token);
-  if (exists) {
-    success(`Project "${projectName}" already exists`);
-  } else {
-    log(`Creating project "${projectName}"...`);
-    const created = await createPagesProject(accountId, projectName, token);
-    if (created) {
-      success(`Created project: ${projectName}`);
-    } else {
-      warn("Could not create project automatically.");
-      log("");
-      log("Please create it manually:");
-      log("  1. Go to https://dash.cloudflare.com → Workers & Pages");
-      log("  2. Click 'Create' → 'Pages' → 'Upload assets'");
-      log(`  3. Name it: ${projectName}`);
-      log("");
-      await prompt("Press Enter when done...");
-    }
-  }
-
-  // Ask about custom domain
-  log("");
-  log("Step 2: Custom domain (optional)...");
-  log("");
-  const wantCustomDomain = await promptYesNo(
-    "Do you want to add a custom domain to your Pages project?",
-    false,
-  );
-
-  let customDomain: string | null = null;
-  if (wantCustomDomain) {
-    customDomain = await prompt("Enter your custom domain (e.g., app.example.com): ");
-    if (customDomain) {
-      log(`Adding custom domain: ${customDomain}...`);
-      const added = await addPagesCustomDomain(
-        accountId,
-        projectName,
-        customDomain,
-        token,
-      );
-      if (added) {
-        success(`Custom domain added: ${customDomain}`);
-        log("");
-        info("You'll need to verify DNS ownership in Cloudflare dashboard.");
-        log("  Go to: Workers & Pages → your project → Custom domains");
-      } else {
-        warn("Could not add custom domain automatically.");
-        log("");
-        log("Add it manually in the Cloudflare dashboard:");
-        log("  Workers & Pages → your project → Custom domains → Add");
-      }
-    }
-  }
+  info(`Worker "${workerName}" will be created on first deploy.`);
+  log("  (Workers are automatically created when you deploy)");
 
   // Save to .env.local
   log("");
-  log("Step 3: Saving configuration...");
-  savePagesProjectToEnv(projectName);
-  success("Saved CLOUDFLARE_PAGES_PROJECT to .env.local");
+  log("Step 2: Saving configuration...");
+  saveWorkerNameToEnv(workerName);
+  success("Saved CLOUDFLARE_WORKER_NAME to .env.local");
 
   // Offer to deploy
   log("");
-  log("Step 4: Deploy static files...");
+  log("Step 3: Deploy static files...");
   log("");
   const shouldDeploy = await promptYesNo(
     "Would you like to build and deploy static files now?",
@@ -685,15 +600,15 @@ async function runPagesSetup(token: string): Promise<void> {
 
     if (buildResult.status === 0) {
       log("");
-      log("Deploying to Cloudflare Pages...");
+      log("Deploying to Cloudflare Workers...");
       const deployResult = spawnSync(
         "npx",
         [
           "@get-convex/self-static-hosting",
           "upload",
-          "--cloudflare-pages",
-          "--pages-project",
-          projectName,
+          "--cloudflare-workers",
+          "--worker-name",
+          workerName,
           "--prod",
         ],
         { stdio: "inherit" },
@@ -703,32 +618,37 @@ async function runPagesSetup(token: string): Promise<void> {
         success("Deployment complete!");
       } else {
         warn("Deployment failed. Try running manually:");
-        log(`  npx @get-convex/self-static-hosting upload --cloudflare-pages --pages-project ${projectName} --prod`);
+        log(`  npx @get-convex/self-static-hosting upload --cloudflare-workers --worker-name ${workerName} --prod`);
       }
     } else {
       warn("Build failed. Please fix any errors and run:");
       log(`  npm run build`);
-      log(`  npx @get-convex/self-static-hosting upload --cloudflare-pages --pages-project ${projectName} --prod`);
+      log(`  npx @get-convex/self-static-hosting upload --cloudflare-workers --worker-name ${workerName} --prod`);
     }
   }
 
+  // Build the URL
+  const workerUrl = subdomain
+    ? `https://${workerName}.${subdomain}.workers.dev`
+    : `https://${workerName}.workers.dev`;
+
   // Done!
   log("");
-  log("═══════════════════════════════════════════════════════════");
-  success("Cloudflare Pages setup complete!");
+  log("===============================================================");
+  success("Cloudflare Workers setup complete!");
   log("");
   log("Your configuration:");
-  log(`  Project: ${projectName}`);
-  log(`  URL: https://${projectName}.pages.dev`);
-  if (customDomain) {
-    log(`  Custom domain: https://${customDomain} (pending verification)`);
-  }
+  log(`  Worker: ${workerName}`);
+  log(`  URL: ${workerUrl}`);
+  log("");
+  log("To add a custom domain, go to:");
+  log("  https://dash.cloudflare.com -> Workers & Pages -> your worker -> Settings -> Triggers");
   log("");
   log("To deploy in the future, run:");
-  log(`  npx @get-convex/self-static-hosting upload --build --prod --cloudflare-pages`);
+  log(`  npx @get-convex/self-static-hosting upload --build --prod --cloudflare-workers`);
   log("");
   log("Or add to package.json:");
-  log(`  "deploy:static": "npx @get-convex/self-static-hosting upload --build --prod --cloudflare-pages"`);
+  log(`  "deploy:static": "npx @get-convex/self-static-hosting upload --build --prod --cloudflare-workers"`);
   log("");
 
   rl.close();
@@ -804,7 +724,7 @@ async function main(): Promise<void> {
   log("");
   log("How would you like to host your static files?");
   log("");
-  log("  1. Cloudflare Pages (recommended)");
+  log("  1. Cloudflare Workers (recommended)");
   log("     - Files served directly from Cloudflare edge");
   log("     - No Convex storage costs for static assets");
   log("     - Built-in SPA routing support");
@@ -816,11 +736,11 @@ async function main(): Promise<void> {
   log("");
 
   const modeChoice = await prompt("Select mode [1-2] (default: 1): ");
-  const usePages = modeChoice !== "2";
+  const useWorkers = modeChoice !== "2";
 
-  if (usePages) {
-    // Run Pages setup flow
-    await runPagesSetup(token);
+  if (useWorkers) {
+    // Run Workers setup flow
+    await runWorkersSetup(token);
     return;
   }
 

@@ -4,8 +4,8 @@
  *
  * Commands:
  *   deploy              One-shot deployment (Convex backend + static files)
- *   upload              Upload static files to Convex or Cloudflare Pages
- *   setup-cloudflare    Interactive Cloudflare CDN setup
+ *   upload              Upload static files to Convex or Cloudflare Workers
+ *   setup-cloudflare    Interactive Cloudflare setup wizard
  *   init                Print setup instructions
  */
 
@@ -58,13 +58,13 @@ Usage:
 
 Commands:
   deploy              One-shot deployment (Convex backend + static files)
-  upload              Upload static files to Convex storage or Cloudflare Pages
+  upload              Upload static files to Convex storage or Cloudflare Workers
   setup-cloudflare    Interactive Cloudflare setup wizard
   init                Print setup instructions for integration
 
 Examples:
-  # One-shot deployment to Cloudflare Pages
-  npx @get-convex/self-static-hosting deploy --cloudflare-pages --pages-project my-app
+  # One-shot deployment to Cloudflare Workers
+  npx @get-convex/self-static-hosting deploy --cloudflare-workers --worker-name my-app
 
   # One-shot deployment to Convex storage
   npx @get-convex/self-static-hosting deploy
@@ -112,7 +112,7 @@ import { components } from "./_generated/api";
 
 const http = httpRouter();
 
-// Serve static files (skip this if using Cloudflare Pages)
+// Serve static files (skip this if using Cloudflare Workers)
 registerStaticRoutes(http, components.selfStaticHosting, {
   pathPrefix: "/",  // or "/app" to keep API routes separate
   spaFallback: true,
@@ -143,7 +143,7 @@ export const { getCurrentDeployment } =
 {
   "scripts": {
     "build": "vite build",
-    "deploy": "npx @get-convex/self-static-hosting deploy --cloudflare-pages --pages-project my-app"
+    "deploy": "npx @get-convex/self-static-hosting deploy --cloudflare-workers --worker-name my-app"
   }
 }
 \`\`\`
@@ -163,7 +163,7 @@ Or for Convex storage mode:
 \`\`\`bash
 # Login first
 npx convex login
-npx wrangler login  # if using Cloudflare Pages
+npx wrangler login  # if using Cloudflare Workers
 
 # One-shot deployment (backend + static files)
 npm run deploy
@@ -177,7 +177,7 @@ npx @get-convex/self-static-hosting setup-cloudflare
 
 This interactive wizard will help you choose between:
 
-1. **Cloudflare Pages** (recommended)
+1. **Cloudflare Workers** (recommended)
    - Files served directly from Cloudflare edge
    - No Convex storage costs for static assets
    - Built-in SPA routing

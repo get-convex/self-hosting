@@ -1,23 +1,22 @@
 #!/usr/bin/env node
 /**
- * Upload static files to Cloudflare Pages via Direct Upload.
+ * Upload static files to Cloudflare Workers with Static Assets.
  *
- * This module uses wrangler CLI to deploy files directly to Cloudflare Pages,
+ * This module uses wrangler CLI to deploy files directly to Cloudflare Workers,
  * bypassing Convex storage for a pure edge deployment.
  */
 
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, rmSync, mkdirSync } from "fs";
 import { resolve, join } from "path";
 import { execSync, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 
-export interface CloudflarePagesOptions {
+export interface CloudflareWorkersOptions {
   distDir: string;
-  projectName: string;
+  workerName: string;
   accountId?: string;
   apiToken?: string;
-  branch?: string;
   convexComponent?: string;
   prod?: boolean;
 }
@@ -101,71 +100,15 @@ export async function getCloudflareAccountId(
 }
 
 /**
- * Check if a Cloudflare Pages project exists
+ * Get the workers.dev subdomain for an account
  */
-export async function pagesProjectExists(
+export async function getWorkerSubdomain(
   accountId: string,
-  projectName: string,
   apiToken: string,
-): Promise<boolean> {
+): Promise<string | null> {
   try {
     const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-    const data = (await response.json()) as { success: boolean };
-    return data.success;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Create a Cloudflare Pages project
- */
-export async function createPagesProject(
-  accountId: string,
-  projectName: string,
-  apiToken: string,
-): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: projectName,
-          production_branch: "main",
-        }),
-      },
-    );
-    const data = (await response.json()) as { success: boolean };
-    return data.success;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Get Pages project info including domains
- */
-export async function getPagesProjectInfo(
-  accountId: string,
-  projectName: string,
-  apiToken: string,
-): Promise<{ subdomain: string; domains: string[] } | null> {
-  try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`,
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`,
       {
         headers: {
           Authorization: `Bearer ${apiToken}`,
@@ -175,16 +118,10 @@ export async function getPagesProjectInfo(
     );
     const data = (await response.json()) as {
       success: boolean;
-      result: {
-        subdomain: string;
-        domains: string[];
-      };
+      result: { subdomain: string };
     };
     if (data.success && data.result) {
-      return {
-        subdomain: data.result.subdomain,
-        domains: data.result.domains || [],
-      };
+      return data.result.subdomain;
     }
   } catch {
     // Ignore errors
@@ -229,21 +166,20 @@ function updateConvexDeployment(
   } catch {
     // Non-fatal - live reload won't work but deployment succeeded
     console.warn(
-      "⚠️  Could not update Convex deployment info (live reload may not work)",
+      "  Could not update Convex deployment info (live reload may not work)",
     );
   }
 }
 
 /**
- * Deploy to Cloudflare Pages using wrangler CLI
+ * Deploy to Cloudflare Workers with Static Assets using wrangler CLI
  */
-export async function deployToCloudflarePages(
-  options: CloudflarePagesOptions,
+export async function deployToCloudflareWorkers(
+  options: CloudflareWorkersOptions,
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   const {
     distDir,
-    projectName,
-    branch = "main",
+    workerName,
     convexComponent = "staticHosting",
     prod = false,
   } = options;
@@ -258,7 +194,7 @@ export async function deployToCloudflarePages(
   }
 
   const fileCount = countFiles(resolvedDistDir);
-  console.log(`📁 Found ${fileCount} files in ${distDir}`);
+  console.log(`   Found ${fileCount} files in ${distDir}`);
 
   // Get API token
   const apiToken = options.apiToken || getCloudflareApiToken();
@@ -273,7 +209,7 @@ export async function deployToCloudflarePages(
   // Get account ID
   let accountId: string | null = options.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || null;
   if (!accountId) {
-    console.log("🔍 Looking up Cloudflare account ID...");
+    console.log("   Looking up Cloudflare account ID...");
     accountId = await getCloudflareAccountId(apiToken);
     if (!accountId) {
       return {
@@ -284,45 +220,35 @@ export async function deployToCloudflarePages(
     }
   }
 
-  // Check if project exists, create if not
-  const exists = await pagesProjectExists(accountId, projectName, apiToken);
-  if (!exists) {
-    console.log(`📝 Creating Cloudflare Pages project: ${projectName}...`);
-    const created = await createPagesProject(accountId, projectName, apiToken);
-    if (!created) {
-      console.log("");
-      console.log("Could not create project automatically.");
-      console.log("Please create it manually:");
-      console.log("  1. Go to https://dash.cloudflare.com → Workers & Pages");
-      console.log("  2. Click 'Create' → 'Pages' → 'Upload assets'");
-      console.log(`  3. Name it: ${projectName}`);
-      console.log("  4. Run this command again");
-      return {
-        success: false,
-        error: `Could not create Pages project: ${projectName}`,
-      };
-    }
-    console.log(`✅ Created project: ${projectName}`);
-  }
-
   // Generate deployment ID for tracking
   const deploymentId = randomUUID();
 
+  // Create temporary wrangler.json config
+  const tempDir = join(tmpdir(), `wrangler-deploy-${deploymentId}`);
+  mkdirSync(tempDir, { recursive: true });
+
+  const wranglerConfig = {
+    name: workerName,
+    compatibility_date: "2024-12-01",
+    assets: {
+      directory: resolvedDistDir,
+      not_found_handling: "single-page-application",
+    },
+  };
+
+  const wranglerConfigPath = join(tempDir, "wrangler.json");
+  writeFileSync(wranglerConfigPath, JSON.stringify(wranglerConfig, null, 2));
+
   // Deploy using wrangler
   console.log("");
-  console.log(`🚀 Deploying to Cloudflare Pages: ${projectName}...`);
-  console.log(`   Branch: ${branch}`);
+  console.log(`   Deploying to Cloudflare Workers: ${workerName}...`);
   console.log("");
 
   const wranglerArgs = [
     "wrangler",
-    "pages",
     "deploy",
-    resolvedDistDir,
-    "--project-name",
-    projectName,
-    "--branch",
-    branch,
+    "--config",
+    wranglerConfigPath,
   ];
 
   const result = spawnSync("npx", wranglerArgs, {
@@ -334,6 +260,13 @@ export async function deployToCloudflarePages(
     },
   });
 
+  // Clean up temporary config
+  try {
+    rmSync(tempDir, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup errors
+  }
+
   if (result.status !== 0) {
     return {
       success: false,
@@ -343,14 +276,14 @@ export async function deployToCloudflarePages(
 
   // Update Convex deployment info for live reload
   console.log("");
-  console.log("📡 Updating Convex deployment info...");
+  console.log("   Updating Convex deployment info...");
   updateConvexDeployment(convexComponent, deploymentId, prod);
 
-  // Get project info for URL
-  const projectInfo = await getPagesProjectInfo(accountId, projectName, apiToken);
-  const url = projectInfo
-    ? `https://${projectInfo.subdomain}`
-    : `https://${projectName}.pages.dev`;
+  // Get worker subdomain for URL
+  const subdomain = await getWorkerSubdomain(accountId, apiToken);
+  const url = subdomain
+    ? `https://${workerName}.${subdomain}.workers.dev`
+    : `https://${workerName}.workers.dev`;
 
   return {
     success: true,
@@ -363,32 +296,30 @@ export async function deployToCloudflarePages(
  */
 export async function main(args: {
   dist: string;
-  projectName: string;
-  branch?: string;
+  workerName: string;
   component?: string;
   prod?: boolean;
 }): Promise<void> {
   console.log("");
-  console.log("☁️  Cloudflare Pages Deployment");
-  console.log("═══════════════════════════════════════════════════════════");
+  console.log("  Cloudflare Workers Deployment");
+  console.log("===============================================================");
   console.log("");
 
-  const result = await deployToCloudflarePages({
+  const result = await deployToCloudflareWorkers({
     distDir: args.dist,
-    projectName: args.projectName,
-    branch: args.branch,
+    workerName: args.workerName,
     convexComponent: args.component,
     prod: args.prod,
   });
 
   if (!result.success) {
-    console.error(`❌ ${result.error}`);
+    console.error(`  ${result.error}`);
     process.exit(1);
   }
 
   console.log("");
-  console.log("═══════════════════════════════════════════════════════════");
-  console.log("✨ Deployment complete!");
+  console.log("===============================================================");
+  console.log("  Deployment complete!");
   console.log("");
   console.log(`Your site is live at: ${result.url}`);
   console.log("");

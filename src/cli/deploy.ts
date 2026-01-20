@@ -8,7 +8,7 @@
  * This command:
  * 1. Builds the frontend with the correct VITE_CONVEX_URL
  * 2. Deploys the Convex backend (npx convex deploy)
- * 3. Deploys static files to Cloudflare Pages or Convex storage
+ * 3. Deploys static files to Cloudflare Workers or Convex storage
  *
  * The goal is to minimize the inconsistency window between backend and frontend.
  */
@@ -16,14 +16,14 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { execSync, spawnSync } from "child_process";
-import { deployToCloudflarePages } from "./upload-cloudflare-pages.js";
+import { deployToCloudflareWorkers } from "./upload-cloudflare-workers.js";
 
 interface ParsedArgs {
   dist: string;
   component: string;
   help: boolean;
-  cloudflarePages: boolean;
-  pagesProject: string | null;
+  cloudflareWorkers: boolean;
+  workerName: string | null;
   skipBuild: boolean;
   skipConvex: boolean;
 }
@@ -33,8 +33,8 @@ function parseArgs(args: string[]): ParsedArgs {
     dist: "./dist",
     component: "staticHosting",
     help: false,
-    cloudflarePages: false,
-    pagesProject: null,
+    cloudflareWorkers: false,
+    workerName: null,
     skipBuild: false,
     skipConvex: false,
   };
@@ -47,10 +47,10 @@ function parseArgs(args: string[]): ParsedArgs {
       result.dist = args[++i] || result.dist;
     } else if (arg === "--component" || arg === "-c") {
       result.component = args[++i] || result.component;
-    } else if (arg === "--cloudflare-pages") {
-      result.cloudflarePages = true;
-    } else if (arg === "--pages-project") {
-      result.pagesProject = args[++i] || null;
+    } else if (arg === "--cloudflare-workers") {
+      result.cloudflareWorkers = true;
+    } else if (arg === "--worker-name") {
+      result.workerName = args[++i] || null;
     } else if (arg === "--skip-build") {
       result.skipBuild = true;
     } else if (arg === "--skip-convex") {
@@ -59,9 +59,9 @@ function parseArgs(args: string[]): ParsedArgs {
   }
 
   // Check environment variables
-  if (!result.pagesProject && process.env.CLOUDFLARE_PAGES_PROJECT) {
-    result.pagesProject = process.env.CLOUDFLARE_PAGES_PROJECT;
-    result.cloudflarePages = true;
+  if (!result.workerName && process.env.CLOUDFLARE_WORKER_NAME) {
+    result.workerName = process.env.CLOUDFLARE_WORKER_NAME;
+    result.cloudflareWorkers = true;
   }
 
   return result;
@@ -77,32 +77,32 @@ Minimizes the inconsistency window between backend and frontend updates.
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
   -c, --component <name>      Convex component name (default: staticHosting)
-      --cloudflare-pages      Deploy static files to Cloudflare Pages
-      --pages-project <name>  Cloudflare Pages project name
+      --cloudflare-workers    Deploy static files to Cloudflare Workers (Static Assets)
+      --worker-name <name>    Worker name for deployment
       --skip-build            Skip the build step (use existing dist)
       --skip-convex           Skip Convex backend deployment
   -h, --help                  Show this help message
 
 Environment Variables:
-  CLOUDFLARE_PAGES_PROJECT    Default Pages project name (enables --cloudflare-pages)
+  CLOUDFLARE_WORKER_NAME      Default worker name (enables --cloudflare-workers)
 
 Deployment Flow:
   1. Build frontend with production VITE_CONVEX_URL
   2. Deploy Convex backend (npx convex deploy)
-  3. Deploy static files to CF Pages or Convex storage
+  3. Deploy static files to CF Workers or Convex storage
 
 Examples:
-  # Full deployment to Cloudflare Pages
-  npx @get-convex/self-static-hosting deploy --cloudflare-pages --pages-project my-app
+  # Full deployment to Cloudflare Workers
+  npx @get-convex/self-static-hosting deploy --cloudflare-workers --worker-name my-app
 
   # Full deployment to Convex storage
   npx @get-convex/self-static-hosting deploy
 
   # Skip build (if already built)
-  npx @get-convex/self-static-hosting deploy --skip-build --cloudflare-pages
+  npx @get-convex/self-static-hosting deploy --skip-build --cloudflare-workers
 
   # Only deploy static files (skip Convex backend)
-  npx @get-convex/self-static-hosting deploy --skip-convex --cloudflare-pages
+  npx @get-convex/self-static-hosting deploy --skip-convex --cloudflare-workers
 `);
 }
 
@@ -290,33 +290,33 @@ async function main(): Promise<void> {
 
   let staticDeploySuccess = false;
 
-  if (args.cloudflarePages) {
-    if (!args.pagesProject) {
+  if (args.cloudflareWorkers) {
+    if (!args.workerName) {
       console.error("");
-      console.error("❌ --pages-project is required when using --cloudflare-pages");
-      console.error("   Or set CLOUDFLARE_PAGES_PROJECT environment variable");
+      console.error("--worker-name is required when using --cloudflare-workers");
+      console.error("   Or set CLOUDFLARE_WORKER_NAME environment variable");
       process.exit(1);
     }
 
-    console.log(`   Target: Cloudflare Pages (${args.pagesProject})`);
+    console.log(`   Target: Cloudflare Workers (${args.workerName})`);
     console.log("");
 
-    const result = await deployToCloudflarePages({
+    const result = await deployToCloudflareWorkers({
       distDir,
-      projectName: args.pagesProject,
+      workerName: args.workerName,
       convexComponent: args.component,
       prod: true,
     });
 
     if (!result.success) {
       console.error("");
-      console.error(`❌ ${result.error}`);
+      console.error(`${result.error}`);
       process.exit(1);
     }
 
     staticDeploySuccess = true;
     console.log("");
-    console.log(`   ✓ Deployed to ${result.url}`);
+    console.log(`   Deployed to ${result.url}`);
   } else {
     console.log("   Target: Convex storage");
     staticDeploySuccess = await uploadToConvexStorage(distDir, args.component);
@@ -337,8 +337,8 @@ async function main(): Promise<void> {
   console.log("");
 
   // Show URLs
-  if (args.cloudflarePages && args.pagesProject) {
-    console.log(`Frontend: https://${args.pagesProject}.pages.dev`);
+  if (args.cloudflareWorkers && args.workerName) {
+    console.log(`Frontend: https://${args.workerName}.workers.dev`);
   } else {
     // Get Convex site URL
     try {

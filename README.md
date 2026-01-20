@@ -117,8 +117,8 @@ Options:
       --dev                   Deploy to dev deployment (default)
   -b, --build                 Run 'npm run build' with correct VITE_CONVEX_URL
       --domain <name>         Custom domain for URL output and Cloudflare cache purge
-      --cloudflare-pages      Deploy to Cloudflare Pages instead of Convex storage
-      --pages-project <name>  Cloudflare Pages project name
+      --cloudflare-workers    Deploy to Cloudflare Workers instead of Convex storage
+      --worker-name <name>    Cloudflare Worker name
   -h, --help                  Show help
 ```
 
@@ -131,8 +131,8 @@ npx @get-convex/self-static-hosting upload --build --prod
 # Deploy to production with custom domain (also purges Cloudflare cache)
 npx @get-convex/self-static-hosting upload --build --prod --domain mysite.com
 
-# Deploy to Cloudflare Pages instead
-npx @get-convex/self-static-hosting upload --build --prod --cloudflare-pages --pages-project my-app
+# Deploy to Cloudflare Workers instead
+npx @get-convex/self-static-hosting upload --build --prod --cloudflare-workers --worker-name my-app
 
 # Deploy to dev (for testing)
 npx @get-convex/self-static-hosting upload --build
@@ -147,10 +147,10 @@ Deploy both Convex backend and static files with a single command:
 ```bash
 # Make sure you're logged in
 npx convex login
-npx wrangler login  # if using Cloudflare Pages
+npx wrangler login  # if using Cloudflare Workers
 
-# Deploy everything to Cloudflare Pages
-npx @get-convex/self-static-hosting deploy --cloudflare-pages --pages-project my-app
+# Deploy everything to Cloudflare Workers
+npx @get-convex/self-static-hosting deploy --cloudflare-workers --worker-name my-app
 
 # Or deploy everything to Convex storage
 npx @get-convex/self-static-hosting deploy
@@ -159,7 +159,7 @@ npx @get-convex/self-static-hosting deploy
 The `deploy` command:
 1. Builds frontend with production `VITE_CONVEX_URL`
 2. Deploys Convex backend (`npx convex deploy`)
-3. Deploys static files (to CF Pages or Convex storage)
+3. Deploys static files (to CF Workers or Convex storage)
 
 This minimizes the inconsistency window between backend and frontend updates.
 
@@ -171,8 +171,8 @@ npx @get-convex/self-static-hosting deploy [options]
 Options:
   -d, --dist <path>           Path to dist directory (default: ./dist)
   -c, --component <name>      Convex component name (default: staticHosting)
-      --cloudflare-pages      Deploy static files to Cloudflare Pages
-      --pages-project <name>  Cloudflare Pages project name
+      --cloudflare-workers    Deploy static files to Cloudflare Workers
+      --worker-name <name>    Cloudflare Worker name
       --skip-build            Skip the build step (use existing dist)
       --skip-convex           Skip Convex backend deployment
   -h, --help                  Show help
@@ -183,7 +183,7 @@ Add to `package.json` for easy deployments:
 ```json
 {
   "scripts": {
-    "deploy": "npx @get-convex/self-static-hosting deploy --cloudflare-pages --pages-project my-app"
+    "deploy": "npx @get-convex/self-static-hosting deploy --cloudflare-workers --worker-name my-app"
   }
 }
 ```
@@ -225,18 +225,19 @@ The upload API uses **internal functions** that can only be called via:
 This means unauthorized users **cannot** upload files to your site, even if they
 know your Convex URL.
 
-## Cloudflare Pages (Recommended)
+## Cloudflare Workers (Recommended)
 
-Deploy your static files directly to Cloudflare Pages for the best performance.
-Files are served from Cloudflare's edge network without needing Convex storage.
+Deploy your static files directly to Cloudflare Workers with Static Assets for
+the best performance. Files are served from Cloudflare's edge network without
+needing Convex storage.
 
 ### Benefits
 
 - Files served directly from Cloudflare edge (no origin fetch)
 - No Convex storage costs for static assets
-- No Worker proxy needed
 - Built-in SPA routing support
 - Automatic SSL/HTTPS
+- Workers are created automatically on first deploy
 
 ### Quick Setup
 
@@ -245,15 +246,14 @@ npx @get-convex/self-static-hosting setup-cloudflare
 ```
 
 The wizard will ask you to choose between:
-1. **Cloudflare Pages** (recommended) - Files hosted on CF edge
+1. **Cloudflare Workers** (recommended) - Files hosted on CF edge
 2. **Convex Storage + Cloudflare CDN** - Files in Convex, cached by CF
 
-For Cloudflare Pages, the wizard will:
+For Cloudflare Workers, the wizard will:
 1. Login to Cloudflare (via wrangler)
-2. Create a Pages project (or use existing)
-3. Optionally configure a custom domain
-4. Save configuration to `.env.local`
-5. Offer to build and deploy
+2. Configure a worker name
+3. Save configuration to `.env.local`
+4. Offer to build and deploy
 
 ### Manual Setup
 
@@ -262,36 +262,34 @@ For Cloudflare Pages, the wizard will:
    npx wrangler login
    ```
 
-2. Deploy to Cloudflare Pages:
+2. Deploy to Cloudflare Workers:
    ```bash
    npx @get-convex/self-static-hosting upload --build --prod \
-     --cloudflare-pages --pages-project my-app
+     --cloudflare-workers --worker-name my-app
    ```
 
 3. Add to `package.json`:
    ```json
    {
      "scripts": {
-       "deploy:static": "npx @get-convex/self-static-hosting upload --build --prod --cloudflare-pages"
+       "deploy:static": "npx @get-convex/self-static-hosting upload --build --prod --cloudflare-workers"
      }
    }
    ```
 
-4. Set environment variable (optional, alternative to `--pages-project`):
+4. Set environment variable (optional, alternative to `--worker-name`):
    ```bash
-   export CLOUDFLARE_PAGES_PROJECT=my-app
+   export CLOUDFLARE_WORKER_NAME=my-app
    ```
 
 ### Custom Domains
 
 Add custom domains in the Cloudflare dashboard:
-- Go to Workers & Pages → your project → Custom domains → Add
-
-Or use the setup wizard which can configure this for you.
+- Go to Workers & Pages → your worker → Settings → Triggers → Custom Domains
 
 ### Live Reload
 
-The live reload feature still works with Cloudflare Pages! The CLI updates
+The live reload feature still works with Cloudflare Workers! The CLI updates
 Convex deployment info after each deploy, so connected clients get notified.
 
 ---
@@ -299,7 +297,7 @@ Convex deployment info after each deploy, so connected clients get notified.
 ## CDN Setup (Convex Storage + Cloudflare)
 
 If you prefer to keep static files in Convex storage (instead of Cloudflare
-Pages), you can put Cloudflare in front as a CDN for edge caching, compression,
+Workers), you can put Cloudflare in front as a CDN for edge caching, compression,
 DDoS protection, and custom domains.
 
 ### Quick Setup
