@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2-alpha.0
+## 0.1.2-alpha.1
 
 removed cloudflare for now.
 
