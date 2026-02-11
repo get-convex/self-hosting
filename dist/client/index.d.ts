@@ -44,8 +44,8 @@ export declare function exposeUploadApi(component: ComponentApi): {
      * Pass storageId for Convex storage assets, or blobId for CDN assets.
      */
     recordAsset: import("convex/server").RegisteredMutation<"internal", {
-        blobId?: string | undefined;
         storageId?: string | undefined;
+        blobId?: string | undefined;
         path: string;
         contentType: string;
         deploymentId: string;

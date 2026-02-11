@@ -1,6 +1,5 @@
 import {
   httpActionGeneric,
-  internalActionGeneric,
   internalMutationGeneric,
   internalQueryGeneric,
   queryGeneric,

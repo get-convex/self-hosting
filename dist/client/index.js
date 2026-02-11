@@ -1,4 +1,4 @@
-import { httpActionGeneric, internalActionGeneric, internalMutationGeneric, internalQueryGeneric, queryGeneric, } from "convex/server";
+import { httpActionGeneric, internalMutationGeneric, internalQueryGeneric, queryGeneric, } from "convex/server";
 import { v } from "convex/values";
 // MIME type mapping for common file types
 const MIME_TYPES = {
