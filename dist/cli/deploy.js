@@ -22,6 +22,7 @@ function parseArgs(args) {
         help: false,
         skipBuild: false,
         skipConvex: false,
+        cdn: false,
     };
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -40,6 +41,9 @@ function parseArgs(args) {
         else if (arg === "--skip-convex") {
             result.skipConvex = true;
         }
+        else if (arg === "--cdn") {
+            result.cdn = true;
+        }
     }
     return result;
 }
@@ -55,6 +59,7 @@ Options:
   -c, --component <name>      Convex component name (default: staticHosting)
       --skip-build            Skip the build step (use existing dist)
       --skip-convex           Skip Convex backend deployment
+      --cdn                   Upload non-HTML assets to convex-fs CDN
   -h, --help                  Show this help message
 
 Deployment Flow:
@@ -103,11 +108,13 @@ function getConvexProdUrl() {
 /**
  * Run the Convex storage upload flow
  */
-async function uploadToConvexStorage(distDir, componentName) {
+async function uploadToConvexStorage(distDir, componentName, useCdn) {
     console.log("");
-    console.log("📦 Uploading static files to Convex storage...");
+    console.log(useCdn
+        ? "📦 Uploading static files (HTML to Convex, assets to CDN)..."
+        : "📦 Uploading static files to Convex storage...");
     console.log("");
-    const result = spawnSync("npx", [
+    const uploadArgs = [
         "@convex-dev/self-hosting",
         "upload",
         "--dist",
@@ -115,7 +122,11 @@ async function uploadToConvexStorage(distDir, componentName) {
         "--component",
         componentName,
         "--prod",
-    ], { stdio: "inherit" });
+    ];
+    if (useCdn) {
+        uploadArgs.push("--cdn");
+    }
+    const result = spawnSync("npx", uploadArgs, { stdio: "inherit" });
     return result.status === 0;
 }
 async function main() {
@@ -219,7 +230,7 @@ async function main() {
         console.error("   Run build first or check --dist path");
         process.exit(1);
     }
-    const staticDeploySuccess = await uploadToConvexStorage(distDir, args.component);
+    const staticDeploySuccess = await uploadToConvexStorage(distDir, args.component, args.cdn);
     if (!staticDeploySuccess) {
         console.error("");
         console.error("❌ Static file upload failed");

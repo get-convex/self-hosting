@@ -4,7 +4,8 @@ import { v } from "convex/values";
 export default defineSchema({
   staticAssets: defineTable({
     path: v.string(), // URL path, e.g., "/index.html", "/assets/main-abc123.js"
-    storageId: v.id("_storage"), // Reference to Convex file storage
+    storageId: v.optional(v.id("_storage")), // Reference to Convex file storage (used for HTML + non-CDN assets)
+    blobId: v.optional(v.string()), // convex-fs blob ID (used for CDN-served assets)
     contentType: v.string(), // MIME type, e.g., "text/html; charset=utf-8"
     deploymentId: v.string(), // UUID for garbage collection
   })

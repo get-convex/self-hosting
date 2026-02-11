@@ -37,10 +37,11 @@ describe("client tests", () => {
   test("gc should return 0 with no assets", async () => {
     const t = initConvexTest();
 
-    const deleted = await t.mutation(testApi.gcOldAssets, {
+    const result = await t.mutation(testApi.gcOldAssets, {
       currentDeploymentId: "test-deployment",
     });
-    expect(deleted).toBe(0);
+    expect(result.deleted).toBe(0);
+    expect(result.blobIds).toHaveLength(0);
   });
 });
 

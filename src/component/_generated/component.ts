@@ -28,7 +28,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         { currentDeploymentId: string },
-        Array<string>,
+        { blobIds: Array<string>; storageIds: Array<string> },
         Name
       >;
       generateUploadUrl: FunctionReference<
@@ -45,10 +45,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           _creationTime: number;
           _id: string;
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         } | null,
         Name
       >;
@@ -71,10 +72,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Array<{
           _creationTime: number;
           _id: string;
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         }>,
         Name
       >;
@@ -82,12 +84,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         },
-        string | null,
+        { oldBlobId: string | null; oldStorageId: string | null },
         Name
       >;
       setCurrentDeployment: FunctionReference<

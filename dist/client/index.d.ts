@@ -4,40 +4,12 @@ import type { ComponentApi } from "../component/_generated/component.js";
  * Get MIME type for a file path based on its extension.
  */
 export declare function getMimeType(path: string): string;
-/**
- * Register HTTP routes for serving static files.
- * This creates a catch-all route that serves files from Convex storage
- * with SPA fallback support.
- *
- * @param http - The HTTP router to register routes on
- * @param component - The component API reference
- * @param options - Configuration options
- * @param options.pathPrefix - URL prefix for static files (default: "/")
- * @param options.spaFallback - Enable SPA fallback to index.html (default: true)
- *
- * @example
- * ```typescript
- * // In your convex/http.ts
- * import { httpRouter } from "convex/server";
- * import { registerStaticRoutes } from "@convex-dev/self-hosting";
- * import { components } from "./_generated/api";
- *
- * const http = httpRouter();
- *
- * // Serve static files at root
- * registerStaticRoutes(http, components.selfHosting);
- *
- * // Or serve at a specific path prefix
- * registerStaticRoutes(http, components.selfHosting, {
- *   pathPrefix: "/app",
- * });
- *
- * export default http;
- * ```
- */
-export declare function registerStaticRoutes(http: HttpRouter, component: ComponentApi, { pathPrefix, spaFallback, }?: {
+export declare function registerStaticRoutes(http: HttpRouter, component: ComponentApi, { pathPrefix, spaFallback, cdnBaseUrl, }?: {
     pathPrefix?: string;
     spaFallback?: boolean;
+    /** Base URL for CDN blob redirects (e.g., `(req) => \`${new URL(req.url).origin}/fs/blobs\``).
+     * When set, assets with a blobId (non-HTML) will return a 302 redirect to `{cdnBaseUrl}/{blobId}`. */
+    cdnBaseUrl?: string | ((request: Request) => string);
 }): void;
 /**
  * Expose the upload API as INTERNAL functions for secure deployments.
@@ -69,13 +41,15 @@ export declare function exposeUploadApi(component: ComponentApi): {
     /**
      * Record an uploaded asset in the database.
      * Automatically cleans up old storage files when replacing.
+     * Pass storageId for Convex storage assets, or blobId for CDN assets.
      */
     recordAsset: import("convex/server").RegisteredMutation<"internal", {
-        storageId: string;
+        blobId?: string | undefined;
+        storageId?: string | undefined;
         path: string;
         contentType: string;
         deploymentId: string;
-    }, Promise<null>>;
+    }, Promise<string | null>>;
     /**
      * Garbage collect old assets and notify clients of the new deployment.
      * Returns the count of deleted assets.
@@ -83,7 +57,10 @@ export declare function exposeUploadApi(component: ComponentApi): {
      */
     gcOldAssets: import("convex/server").RegisteredMutation<"internal", {
         currentDeploymentId: string;
-    }, Promise<number>>;
+    }, Promise<{
+        deleted: number;
+        blobIds: string[];
+    }>>;
     /**
      * List all static assets (for debugging).
      */
@@ -92,10 +69,11 @@ export declare function exposeUploadApi(component: ComponentApi): {
     }, Promise<{
         _creationTime: number;
         _id: string;
+        blobId?: string;
         contentType: string;
         deploymentId: string;
         path: string;
-        storageId: string;
+        storageId?: string;
     }[]>>;
 };
 /**

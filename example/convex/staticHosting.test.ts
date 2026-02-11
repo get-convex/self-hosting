@@ -26,9 +26,10 @@ describe("static hosting example (internal functions)", () => {
 
   test("gcOldAssets returns 0 with no assets", async () => {
     const t = initConvexTest();
-    const deleted = await t.mutation(internal.staticHosting.gcOldAssets, {
+    const result = await t.mutation(internal.staticHosting.gcOldAssets, {
       currentDeploymentId: "test-deployment",
     });
-    expect(deleted).toBe(0);
+    expect(result.deleted).toBe(0);
+    expect(result.blobIds).toHaveLength(0);
   });
 });

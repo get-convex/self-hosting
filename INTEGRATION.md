@@ -122,6 +122,113 @@ npm run deploy
 npm run deploy  # That's it!
 ```
 
+## CDN Mode (Optional)
+
+By default, all static files are stored in Convex storage and served via HTTP actions. With CDN mode, non-HTML assets (JS, CSS, images, fonts) are served from a CDN edge network via [convex-fs](https://convexfs.dev) (backed by Bunny.net), while HTML files continue to be served from Convex (needed for SPA routing).
+
+This gives better performance for static assets and lower Convex bandwidth usage.
+
+### How it works
+
+1. Browser requests `/assets/main-abc123.js`
+2. Convex HTTP action sees the asset has a `blobId` (CDN asset)
+3. Returns **302 redirect** to the convex-fs blob endpoint
+4. convex-fs returns **302 redirect** to signed CDN URL
+5. Browser fetches from CDN edge (and caches for hashed assets)
+
+HTML requests (`index.html`) are always served directly from Convex storage.
+
+### CDN Setup
+
+#### 1. Install convex-fs
+```bash
+npm install convex-fs
+```
+
+#### 2. convex/convex.config.ts
+```typescript
+import { defineApp } from "convex/server";
+import selfHosting from "@convex-dev/self-hosting/convex.config";
+import fs from "convex-fs/convex.config";
+
+const app = defineApp();
+app.use(selfHosting);
+app.use(fs);
+
+export default app;
+```
+
+#### 3. convex/http.ts
+```typescript
+import { httpRouter } from "convex/server";
+import { registerStaticRoutes } from "@convex-dev/self-hosting";
+import { registerRoutes } from "convex-fs";
+import { components } from "./_generated/api";
+
+const http = httpRouter();
+
+// Register convex-fs routes (for CDN blob serving)
+registerRoutes(http, components.fs, {
+  pathPrefix: "/fs",
+  downloadAuth: async () => true,
+});
+
+// Register static file serving with CDN redirect
+registerStaticRoutes(http, components.selfHosting, {
+  cdnBaseUrl: (req) => `${new URL(req.url).origin}/fs/blobs`,
+});
+
+export default http;
+```
+
+#### 4. convex/staticHosting.ts
+```typescript
+import { components } from "./_generated/api";
+import {
+  exposeUploadApi,
+  exposeDeploymentQuery,
+} from "@convex-dev/self-hosting";
+import { internalAction } from "./_generated/server";
+import { v } from "convex/values";
+import { del } from "convex-fs";
+
+export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
+  exposeUploadApi(components.selfHosting);
+
+export const { getCurrentDeployment } =
+  exposeDeploymentQuery(components.selfHosting);
+
+// Thin action wrapper to delete old CDN blobs during garbage collection
+export const deleteCdnBlobs = internalAction({
+  args: { blobIds: v.array(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    for (const blobId of args.blobIds) {
+      await del(ctx, components.fs, blobId);
+    }
+    return null;
+  },
+});
+```
+
+#### 5. Deploy with --cdn flag
+```bash
+# One-shot deployment with CDN
+npx @convex-dev/self-hosting deploy --cdn
+
+# Or upload only with CDN
+npx @convex-dev/self-hosting upload --cdn --prod
+```
+
+### CDN Deploy Script
+```json
+{
+  "scripts": {
+    "deploy": "npx @convex-dev/self-hosting deploy --cdn"
+  }
+}
+```
+
 ## Live Reload Feature (Optional)
 
 Add a banner that notifies users when a new deployment is available:
@@ -202,6 +309,7 @@ Registers HTTP routes for serving static files.
 **Options**:
 - `pathPrefix` (string): URL prefix for static files (default: "/")
 - `spaFallback` (boolean): Enable SPA fallback to index.html (default: true)
+- `cdnBaseUrl` (string | (request: Request) => string): Base URL for CDN blob redirects. When set, non-HTML assets with a `blobId` return a 302 redirect to `{cdnBaseUrl}/{blobId}`. Example: `(req) => \`${new URL(req.url).origin}/fs/blobs\``
 
 ### exposeUploadApi(component)
 Exposes internal functions for CLI-based uploads.

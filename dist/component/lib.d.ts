@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 /**
  * Look up an asset by its URL path.
  */
@@ -6,7 +7,8 @@ export declare const getByPath: import("convex/server").RegisteredQuery<"public"
 }, Promise<{
     _id: import("convex/values").GenericId<"staticAssets">;
     _creationTime: number;
-    storageId: import("convex/values").GenericId<"_storage">;
+    blobId?: string | undefined;
+    storageId?: import("convex/values").GenericId<"_storage"> | undefined;
     path: string;
     contentType: string;
     deploymentId: string;
@@ -25,18 +27,25 @@ export declare const generateUploadUrl: import("convex/server").RegisteredMutati
  * The caller is responsible for deleting the returned storageId from app storage.
  */
 export declare const recordAsset: import("convex/server").RegisteredMutation<"public", {
-    storageId: import("convex/values").GenericId<"_storage">;
+    blobId?: string | undefined;
+    storageId?: import("convex/values").GenericId<"_storage"> | undefined;
     path: string;
     contentType: string;
     deploymentId: string;
-}, Promise<import("convex/values").GenericId<"_storage"> | null>>;
+}, Promise<{
+    oldStorageId: import("convex/values").GenericId<"_storage"> | null;
+    oldBlobId: string | null;
+}>>;
 /**
  * Garbage collect assets from old deployments.
  * Returns the storageIds that need to be deleted from app storage.
  */
 export declare const gcOldAssets: import("convex/server").RegisteredMutation<"public", {
     currentDeploymentId: string;
-}, Promise<import("convex/values").GenericId<"_storage">[]>>;
+}, Promise<{
+    storageIds: Array<ReturnType<typeof v.id<"_storage">>["type"]>;
+    blobIds: string[];
+}>>;
 /**
  * List all assets (useful for debugging).
  */
@@ -45,7 +54,8 @@ export declare const listAssets: import("convex/server").RegisteredQuery<"public
 }, Promise<{
     _id: import("convex/values").GenericId<"staticAssets">;
     _creationTime: number;
-    storageId: import("convex/values").GenericId<"_storage">;
+    blobId?: string | undefined;
+    storageId?: import("convex/values").GenericId<"_storage"> | undefined;
     path: string;
     contentType: string;
     deploymentId: string;
@@ -54,7 +64,10 @@ export declare const listAssets: import("convex/server").RegisteredQuery<"public
  * Delete all assets records (useful for cleanup).
  * Returns storageIds that need to be deleted from app storage.
  */
-export declare const deleteAllAssets: import("convex/server").RegisteredMutation<"internal", {}, Promise<import("convex/values").GenericId<"_storage">[]>>;
+export declare const deleteAllAssets: import("convex/server").RegisteredMutation<"internal", {}, Promise<{
+    storageIds: Array<ReturnType<typeof v.id<"_storage">>["type"]>;
+    blobIds: string[];
+}>>;
 /**
  * Get the current deployment info.
  * Clients subscribe to this to detect when a new deployment happens.

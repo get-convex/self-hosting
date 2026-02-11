@@ -6,7 +6,8 @@ const staticAssetValidator = v.object({
   _id: v.id("staticAssets"),
   _creationTime: v.number(),
   path: v.string(),
-  storageId: v.id("_storage"),
+  storageId: v.optional(v.id("_storage")),
+  blobId: v.optional(v.string()),
   contentType: v.string(),
   deploymentId: v.string(),
 });
@@ -48,11 +49,15 @@ export const generateUploadUrl = mutation({
 export const recordAsset = mutation({
   args: {
     path: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
+    blobId: v.optional(v.string()),
     contentType: v.string(),
     deploymentId: v.string(),
   },
-  returns: v.union(v.id("_storage"), v.null()),
+  returns: v.object({
+    oldStorageId: v.union(v.id("_storage"), v.null()),
+    oldBlobId: v.union(v.string(), v.null()),
+  }),
   handler: async (ctx, args) => {
     // Check if asset already exists at this path
     const existing = await ctx.db
@@ -61,8 +66,10 @@ export const recordAsset = mutation({
       .unique();
 
     let oldStorageId = null;
+    let oldBlobId = null;
     if (existing) {
-      oldStorageId = existing.storageId;
+      oldStorageId = existing.storageId ?? null;
+      oldBlobId = existing.blobId ?? null;
       // Delete old record
       await ctx.db.delete(existing._id);
     }
@@ -70,13 +77,14 @@ export const recordAsset = mutation({
     // Insert new asset
     await ctx.db.insert("staticAssets", {
       path: args.path,
-      storageId: args.storageId,
+      ...(args.storageId ? { storageId: args.storageId } : {}),
+      ...(args.blobId ? { blobId: args.blobId } : {}),
       contentType: args.contentType,
       deploymentId: args.deploymentId,
     });
 
-    // Return old storageId so caller can delete from app storage
-    return oldStorageId;
+    // Return old IDs so caller can clean up
+    return { oldStorageId, oldBlobId };
   },
 });
 
@@ -88,20 +96,32 @@ export const gcOldAssets = mutation({
   args: {
     currentDeploymentId: v.string(),
   },
-  returns: v.array(v.id("_storage")),
+  returns: v.object({
+    storageIds: v.array(v.id("_storage")),
+    blobIds: v.array(v.string()),
+  }),
   handler: async (ctx, args) => {
     const oldAssets = await ctx.db.query("staticAssets").collect();
-    const storageIdsToDelete: Array<typeof args.currentDeploymentId extends string ? string : never> = [];
+    const storageIds: Array<string> = [];
+    const blobIds: Array<string> = [];
 
     for (const asset of oldAssets) {
       if (asset.deploymentId !== args.currentDeploymentId) {
-        storageIdsToDelete.push(asset.storageId as unknown as string);
+        if (asset.storageId) {
+          storageIds.push(asset.storageId as unknown as string);
+        }
+        if (asset.blobId) {
+          blobIds.push(asset.blobId);
+        }
         // Delete database record
         await ctx.db.delete(asset._id);
       }
     }
 
-    return storageIdsToDelete as unknown as Array<ReturnType<typeof v.id<"_storage">>["type"]>;
+    return {
+      storageIds: storageIds as unknown as Array<ReturnType<typeof v.id<"_storage">>["type"]>,
+      blobIds,
+    };
   },
 });
 
@@ -127,17 +147,29 @@ export const listAssets = query({
  */
 export const deleteAllAssets = internalMutation({
   args: {},
-  returns: v.array(v.id("_storage")),
+  returns: v.object({
+    storageIds: v.array(v.id("_storage")),
+    blobIds: v.array(v.string()),
+  }),
   handler: async (ctx) => {
     const assets = await ctx.db.query("staticAssets").collect();
     const storageIds: Array<string> = [];
+    const blobIds: Array<string> = [];
 
     for (const asset of assets) {
-      storageIds.push(asset.storageId as unknown as string);
+      if (asset.storageId) {
+        storageIds.push(asset.storageId as unknown as string);
+      }
+      if (asset.blobId) {
+        blobIds.push(asset.blobId);
+      }
       await ctx.db.delete(asset._id);
     }
 
-    return storageIds as unknown as Array<ReturnType<typeof v.id<"_storage">>["type"]>;
+    return {
+      storageIds: storageIds as unknown as Array<ReturnType<typeof v.id<"_storage">>["type"]>,
+      blobIds,
+    };
   },
 });
 

@@ -152,7 +152,13 @@ function isHashedAsset(path) {
  * export default http;
  * ```
  */
-export function registerStaticRoutes(http, component, { pathPrefix = "/", spaFallback = true, } = {}) {
+/**
+ * Check if a content type is HTML.
+ */
+function isHtmlContentType(contentType) {
+    return contentType.startsWith("text/html");
+}
+export function registerStaticRoutes(http, component, { pathPrefix = "/", spaFallback = true, cdnBaseUrl, } = {}) {
     // Normalize pathPrefix - ensure it starts with / and doesn't end with /
     const normalizedPrefix = pathPrefix === "/" ? "" : pathPrefix.replace(/\/$/, "");
     const serveStaticFile = httpActionGeneric(async (ctx, request) => {
@@ -184,6 +190,29 @@ export function registerStaticRoutes(http, component, { pathPrefix = "/", spaFal
             }
             return new Response("Not Found", {
                 status: 404,
+                headers: { "Content-Type": "text/plain" },
+            });
+        }
+        // CDN redirect: if asset has blobId, is not HTML, and cdnBaseUrl is configured
+        if (asset.blobId && cdnBaseUrl && !isHtmlContentType(asset.contentType)) {
+            const baseUrl = typeof cdnBaseUrl === "function" ? cdnBaseUrl(request) : cdnBaseUrl;
+            const redirectUrl = `${baseUrl.replace(/\/$/, "")}/${asset.blobId}`;
+            // Cache control for redirect: hashed assets can cache the redirect itself
+            const cacheControl = isHashedAsset(path)
+                ? "public, max-age=31536000, immutable"
+                : "public, max-age=0, must-revalidate";
+            return new Response(null, {
+                status: 302,
+                headers: {
+                    Location: redirectUrl,
+                    "Cache-Control": cacheControl,
+                },
+            });
+        }
+        // Serve from Convex storage
+        if (!asset.storageId) {
+            return new Response("Asset not available", {
+                status: 500,
                 headers: { "Content-Type": "text/plain" },
             });
         }
@@ -276,18 +305,21 @@ export function exposeUploadApi(component) {
         /**
          * Record an uploaded asset in the database.
          * Automatically cleans up old storage files when replacing.
+         * Pass storageId for Convex storage assets, or blobId for CDN assets.
          */
         recordAsset: internalMutationGeneric({
             args: {
                 path: v.string(),
-                storageId: v.string(),
+                storageId: v.optional(v.string()),
+                blobId: v.optional(v.string()),
                 contentType: v.string(),
                 deploymentId: v.string(),
             },
             handler: async (ctx, args) => {
-                const oldStorageId = await ctx.runMutation(component.lib.recordAsset, {
+                const { oldStorageId, oldBlobId } = await ctx.runMutation(component.lib.recordAsset, {
                     path: args.path,
-                    storageId: args.storageId,
+                    ...(args.storageId ? { storageId: args.storageId } : {}),
+                    ...(args.blobId ? { blobId: args.blobId } : {}),
                     contentType: args.contentType,
                     deploymentId: args.deploymentId,
                 });
@@ -299,7 +331,8 @@ export function exposeUploadApi(component) {
                         // Ignore - old file may have been in different storage
                     }
                 }
-                return null;
+                // Return oldBlobId so caller can clean up CDN blobs if needed
+                return oldBlobId ?? null;
             },
         }),
         /**
@@ -312,10 +345,10 @@ export function exposeUploadApi(component) {
                 currentDeploymentId: v.string(),
             },
             handler: async (ctx, args) => {
-                const storageIdsToDelete = await ctx.runMutation(component.lib.gcOldAssets, {
+                const { storageIds, blobIds } = await ctx.runMutation(component.lib.gcOldAssets, {
                     currentDeploymentId: args.currentDeploymentId,
                 });
-                for (const storageId of storageIdsToDelete) {
+                for (const storageId of storageIds) {
                     try {
                         await ctx.storage.delete(storageId);
                     }
@@ -327,7 +360,8 @@ export function exposeUploadApi(component) {
                 await ctx.runMutation(component.lib.setCurrentDeployment, {
                     deploymentId: args.currentDeploymentId,
                 });
-                return storageIdsToDelete.length;
+                // Return both counts and blobIds for CDN cleanup
+                return { deleted: storageIds.length, blobIds };
             },
         }),
         /**

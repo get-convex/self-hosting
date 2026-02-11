@@ -49,6 +49,8 @@ interface ParsedArgs {
   component: string;
   prod: boolean;
   build: boolean;
+  cdn: boolean;
+  cdnDeleteFunction: string;
   help: boolean;
 }
 
@@ -58,6 +60,8 @@ function parseArgs(args: string[]): ParsedArgs {
     component: "staticHosting",
     prod: false, // Default to dev, use --prod for production
     build: false,
+    cdn: false,
+    cdnDeleteFunction: "",
     help: false,
   };
 
@@ -75,6 +79,10 @@ function parseArgs(args: string[]): ParsedArgs {
       result.prod = false;
     } else if (arg === "--build" || arg === "-b") {
       result.build = true;
+    } else if (arg === "--cdn") {
+      result.cdn = true;
+    } else if (arg === "--cdn-delete-function") {
+      result.cdnDeleteFunction = args[++i] || result.cdnDeleteFunction;
     }
   }
 
@@ -92,6 +100,8 @@ Options:
   -c, --component <name>      Convex component with upload functions (default: staticHosting)
       --prod                  Deploy to production deployment
   -b, --build                 Run 'npm run build' with correct VITE_CONVEX_URL before uploading
+      --cdn                   Upload non-HTML assets to convex-fs CDN instead of Convex storage
+      --cdn-delete-function <name>  Convex function to delete CDN blobs (default: <component>:deleteCdnBlobs)
   -h, --help                  Show this help message
 
 Examples:
@@ -99,6 +109,9 @@ Examples:
   npx @convex-dev/self-hosting upload
   npx @convex-dev/self-hosting upload --dist ./build --prod
   npx @convex-dev/self-hosting upload --build --prod
+
+  # Upload with CDN (non-HTML files served from CDN)
+  npx @convex-dev/self-hosting upload --cdn --prod
 `);
 }
 
@@ -219,6 +232,7 @@ async function main(): Promise<void> {
 
   const distDir = resolve(args.dist);
   const componentName = args.component;
+  const useCdn = args.cdn;
 
   // Convex storage deployment
 
@@ -230,11 +244,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // If CDN mode, we need the site URL for uploading to convex-fs
+  let siteUrl: string | null = null;
+  if (useCdn) {
+    siteUrl = getConvexSiteUrl(useProd);
+    if (!siteUrl) {
+      console.error("Error: Could not determine Convex site URL for CDN uploads.");
+      console.error("Make sure your Convex deployment is running.");
+      process.exit(1);
+    }
+  }
+
   const deploymentId = randomUUID();
   const files = collectFiles(distDir, distDir);
 
   const envLabel = useProd ? "production" : "development";
   console.log(`🚀 Deploying to ${envLabel} environment`);
+  if (useCdn) {
+    console.log("☁️  CDN mode: non-HTML assets will be uploaded to convex-fs");
+  }
   console.log("🔒 Using secure internal functions (requires Convex CLI auth)");
   console.log(
     `Uploading ${files.length} files with deployment ID: ${deploymentId}`,
@@ -244,51 +272,92 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     const content = readFileSync(file.localPath);
+    const isHtml = file.contentType.startsWith("text/html");
 
-    // Get upload URL via internal function
-    const uploadUrlOutput = convexRun(`${componentName}:generateUploadUrl`);
-    const uploadUrl = JSON.parse(uploadUrlOutput);
+    if (useCdn && !isHtml && siteUrl) {
+      // CDN mode: upload non-HTML files to convex-fs
+      const uploadResponse = await fetch(`${siteUrl}/fs/upload`, {
+        method: "POST",
+        headers: { "Content-Type": file.contentType },
+        body: content,
+      });
 
-    // Upload to storage
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": file.contentType },
-      body: content,
-    });
+      if (!uploadResponse.ok) {
+        console.error(`  ✗ ${file.path} - CDN upload failed: ${uploadResponse.status}`);
+        process.exit(1);
+      }
 
-    const { storageId } = (await response.json()) as { storageId: string };
+      const { blobId } = (await uploadResponse.json()) as { blobId: string };
 
-    // Record in database via internal function
-    convexRun(`${componentName}:recordAsset`, {
-      path: file.path,
-      storageId,
-      contentType: file.contentType,
-      deploymentId,
-    });
+      // Record in database with blobId (no storageId)
+      convexRun(`${componentName}:recordAsset`, {
+        path: file.path,
+        blobId,
+        contentType: file.contentType,
+        deploymentId,
+      });
 
-    console.log(`  ✓ ${file.path} (${file.contentType})`);
+      console.log(`  ✓ ${file.path} (cdn)`);
+    } else {
+      // Standard mode: upload to Convex storage
+      const uploadUrlOutput = convexRun(`${componentName}:generateUploadUrl`);
+      const uploadUrl = JSON.parse(uploadUrlOutput);
+
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.contentType },
+        body: content,
+      });
+
+      const { storageId } = (await response.json()) as { storageId: string };
+
+      // Record in database via internal function
+      convexRun(`${componentName}:recordAsset`, {
+        path: file.path,
+        storageId,
+        contentType: file.contentType,
+        deploymentId,
+      });
+
+      console.log(`  ✓ ${file.path} (${isHtml ? "storage/html" : "storage"})`);
+    }
   }
 
   console.log("");
 
   // Garbage collect old files
-  const deletedOutput = convexRun(`${componentName}:gcOldAssets`, {
+  const gcOutput = convexRun(`${componentName}:gcOldAssets`, {
     currentDeploymentId: deploymentId,
   });
-  const deleted = JSON.parse(deletedOutput);
+  const gcResult = JSON.parse(gcOutput);
 
-  if (deleted > 0) {
-    console.log(`Cleaned up ${deleted} old file(s) from previous deployments`);
+  // Handle both old format (number) and new format ({ deleted, blobIds })
+  const deletedCount = typeof gcResult === "number" ? gcResult : gcResult.deleted;
+  const oldBlobIds: string[] = typeof gcResult === "object" && gcResult.blobIds ? gcResult.blobIds : [];
+
+  if (deletedCount > 0) {
+    console.log(`Cleaned up ${deletedCount} old storage file(s) from previous deployments`);
+  }
+
+  // Clean up old CDN blobs if any
+  if (oldBlobIds.length > 0) {
+    const cdnDeleteFn = args.cdnDeleteFunction || `${componentName}:deleteCdnBlobs`;
+    try {
+      convexRun(cdnDeleteFn, { blobIds: oldBlobIds });
+      console.log(`Cleaned up ${oldBlobIds.length} old CDN blob(s) from previous deployments`);
+    } catch {
+      console.warn(`Warning: Could not delete old CDN blobs. Make sure ${cdnDeleteFn} is defined.`);
+    }
   }
 
   console.log("");
   console.log("✨ Upload complete!");
 
   // Show the deployment URL
-  const siteUrl = getConvexSiteUrl(useProd);
-  if (siteUrl) {
+  const deployedSiteUrl = getConvexSiteUrl(useProd);
+  if (deployedSiteUrl) {
     console.log("");
-    console.log(`Your app is now available at: ${siteUrl}`);
+    console.log(`Your app is now available at: ${deployedSiteUrl}`);
   }
 }
 

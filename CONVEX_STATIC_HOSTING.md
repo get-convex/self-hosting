@@ -435,6 +435,18 @@ CONVEX_URL=https://your-deployment.convex.cloud npm run deploy:static
 # https://your-deployment.convex.site/
 ```
 
+## CDN Mode (Optional)
+
+For better performance, non-HTML static assets can be served from a CDN via [convex-fs](https://convexfs.dev) instead of Convex storage. HTML files continue to be served from Convex (needed for SPA routing).
+
+**How it works**: When CDN mode is enabled, the HTTP action returns a 302 redirect to the convex-fs blob endpoint for non-HTML assets. convex-fs then redirects to a signed CDN URL (Bunny.net). For hashed assets, the browser caches after the first load.
+
+**Schema change**: The `staticAssets` table now supports both `storageId` (optional) and `blobId` (optional). An asset has either a `storageId` (Convex storage) or a `blobId` (CDN).
+
+**Deploy command**: `npx @convex-dev/self-hosting deploy --cdn`
+
+See `INTEGRATION.md` for full CDN setup instructions.
+
 ## Key Learnings / Gotchas
 
 1. **Return validator must include `_creationTime`** - Convex adds this automatically to all documents, and the return validator must include it.
