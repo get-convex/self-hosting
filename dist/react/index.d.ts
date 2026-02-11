@@ -15,7 +15,7 @@ type DeploymentInfo = {
  *
  * @example
  * ```tsx
- * import { useDeploymentUpdates } from "@convex-dev/self-static-hosting/react";
+ * import { useDeploymentUpdates } from "@convex-dev/self-hosting/react";
  * import { api } from "../convex/_generated/api";
  *
  * function App() {
@@ -53,7 +53,7 @@ export declare function useDeploymentUpdates(getCurrentDeployment: FunctionRefer
  *
  * @example
  * ```tsx
- * import { UpdateBanner } from "@convex-dev/self-static-hosting/react";
+ * import { UpdateBanner } from "@convex-dev/self-hosting/react";
  * import { api } from "../convex/_generated/api";
  *
  * function App() {

@@ -4,12 +4,12 @@
  * Output integration instructions for LLMs.
  *
  * Usage:
- *   npx @convex-dev/self-static-hosting init
+ *   npx @convex-dev/self-hosting init
  */
 const instructions = `
-# Convex Self Static Hosting - Integration Instructions
+# Convex Self Hosting - Integration Instructions
 
-You are integrating the @convex-dev/self-static-hosting component into a Convex app.
+You are integrating the @convex-dev/self-hosting component into a Convex app.
 This component enables hosting static files (React/Vite apps) directly on Convex.
 
 ## What This Component Does
@@ -20,7 +20,6 @@ This component enables hosting static files (React/Vite apps) directly on Convex
 - Smart caching: hashed assets cached forever, HTML revalidates
 - ETag support for efficient cache revalidation
 - Live reload notifications when new deployments happen
-- Optional Cloudflare CDN integration
 
 ## Files to Create/Modify
 
@@ -28,10 +27,10 @@ This component enables hosting static files (React/Vite apps) directly on Convex
 
 \`\`\`typescript
 import { defineApp } from "convex/server";
-import selfStaticHosting from "@convex-dev/self-static-hosting/convex.config";
+import selfHosting from "@convex-dev/self-hosting/convex.config";
 
 const app = defineApp();
-app.use(selfStaticHosting);
+app.use(selfHosting);
 
 export default app;
 \`\`\`
@@ -43,35 +42,31 @@ import { components } from "./_generated/api";
 import {
   exposeUploadApi,
   exposeDeploymentQuery,
-  exposeCachePurgeAction,
-} from "@convex-dev/self-static-hosting";
+} from "@convex-dev/self-hosting";
 
 // Internal functions for secure uploads (only callable via CLI)
 export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
-  exposeUploadApi(components.selfStaticHosting);
+  exposeUploadApi(components.selfHosting);
 
 // Public query for live reload notifications
 export const { getCurrentDeployment } =
-  exposeDeploymentQuery(components.selfStaticHosting);
-
-// Optional: Cloudflare cache purge (for CI/CD)
-export const { purgeCloudflareCache } = exposeCachePurgeAction();
+  exposeDeploymentQuery(components.selfHosting);
 \`\`\`
 
 ### 3. convex/http.ts (create or modify)
 
 \`\`\`typescript
 import { httpRouter } from "convex/server";
-import { registerStaticRoutes } from "@convex-dev/self-static-hosting";
+import { registerStaticRoutes } from "@convex-dev/self-hosting";
 import { components } from "./_generated/api";
 
 const http = httpRouter();
 
 // Option A: Serve at root (if no other HTTP routes)
-registerStaticRoutes(http, components.selfStaticHosting);
+registerStaticRoutes(http, components.selfHosting);
 
 // Option B: Serve at /app/ prefix (recommended if you have API routes)
-// registerStaticRoutes(http, components.selfStaticHosting, {
+// registerStaticRoutes(http, components.selfHosting, {
 //   pathPrefix: "/app",
 // });
 
@@ -87,7 +82,7 @@ export default http;
 {
   "scripts": {
     "build": "vite build",
-    "deploy:static": "npx @convex-dev/self-static-hosting upload --build --prod"
+    "deploy:static": "npx @convex-dev/self-hosting upload --build --prod"
   }
 }
 \`\`\`
@@ -97,19 +92,10 @@ The \`--build\` flag ensures \`VITE_CONVEX_URL\` is set correctly for the target
 environment (production or dev). Running build separately uses .env.local which
 has the dev URL.
 
-For custom domains with Cloudflare:
-\`\`\`json
-{
-  "scripts": {
-    "deploy:static": "npx @convex-dev/self-static-hosting upload --build --prod --domain yourdomain.com"
-  }
-}
-\`\`\`
-
 ### 5. src/App.tsx (optional: add live reload banner)
 
 \`\`\`typescript
-import { UpdateBanner } from "@convex-dev/self-static-hosting/react";
+import { UpdateBanner } from "@convex-dev/self-hosting/react";
 import { api } from "../convex/_generated/api";
 
 function App() {
@@ -130,7 +116,7 @@ function App() {
 
 Or use the hook for custom UI:
 \`\`\`typescript
-import { useDeploymentUpdates } from "@convex-dev/self-static-hosting/react";
+import { useDeploymentUpdates } from "@convex-dev/self-hosting/react";
 import { api } from "../convex/_generated/api";
 
 function App() {
@@ -165,58 +151,13 @@ For development/testing:
 npx convex dev --once
 
 # Deploy static files to dev (omit --prod)
-npx @convex-dev/self-static-hosting upload --build
-\`\`\`
-
-## Optional: Cloudflare CDN with Custom Domain
-
-For production with a custom domain, edge caching, and DDoS protection.
-
-### Quick Setup (Recommended)
-
-Run the interactive wizard:
-
-\`\`\`bash
-npx @convex-dev/self-static-hosting setup-cloudflare
-\`\`\`
-
-This wizard will:
-1. Login to Cloudflare (via wrangler)
-2. Let you select or add a domain
-3. Detect your production Convex deployment URL
-4. Configure DNS (CNAME pointing to your Convex site)
-5. Deploy a Cloudflare Worker to handle Host header rewriting
-6. Set SSL/TLS mode to "Full" (prevents redirect loops)
-7. Set up cache purge credentials
-8. Offer to deploy your Convex backend and static files
-
-After setup, deploy with:
-\`\`\`bash
-npm run deploy:static
-\`\`\`
-
-The Cloudflare cache is automatically purged on each deploy.
-
-### Manual Cloudflare Setup
-
-If you prefer manual setup:
-
-1. Add your domain to Cloudflare
-2. Create a CNAME record pointing to your-deployment.convex.site
-3. Deploy a Cloudflare Worker to rewrite the Host header (required!)
-4. Set SSL/TLS mode to "Full" (not "Flexible")
-
-For CI/CD, set environment variables:
-\`\`\`bash
-export CLOUDFLARE_ZONE_ID="your-zone-id"
-export CLOUDFLARE_API_TOKEN="your-api-token"
-npm run deploy:static
+npx @convex-dev/self-hosting upload --build
 \`\`\`
 
 ## CLI Reference
 
 \`\`\`bash
-npx @convex-dev/self-static-hosting upload [options]
+npx @convex-dev/self-hosting upload [options]
 
 Options:
   -d, --dist <path>        Path to dist directory (default: ./dist)
@@ -224,7 +165,6 @@ Options:
       --prod               Deploy to production Convex deployment
       --dev                Deploy to dev deployment (default)
   -b, --build              Run 'npm run build' with correct VITE_CONVEX_URL
-      --domain <name>      Custom domain for URL output and cache purge
   -h, --help               Show help
 \`\`\`
 

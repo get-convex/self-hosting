@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Interactive setup wizard for Convex Self Static Hosting.
+ * Interactive setup wizard for Convex Self Hosting.
  *
  * Usage:
- *   npx @convex-dev/self-static-hosting setup
+ *   npx @convex-dev/self-hosting setup
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -37,24 +37,24 @@ function createConvexConfig(): boolean {
 
   if (existsSync(configPath)) {
     const existing = readFileSync(configPath, "utf-8");
-    if (existing.includes("selfStaticHosting")) {
+    if (existing.includes("selfHosting")) {
       skip("convex/convex.config.ts (already configured)");
       return false;
     }
     // File exists but doesn't have our component - tell user to add manually
     console.log("\n⚠️  convex/convex.config.ts exists. Please add manually:");
-    console.log('   import selfStaticHosting from "@convex-dev/self-static-hosting/convex.config";');
-    console.log("   app.use(selfStaticHosting);\n");
+    console.log('   import selfHosting from "@convex-dev/self-hosting/convex.config";');
+    console.log("   app.use(selfHosting);\n");
     return false;
   }
 
   writeFileSync(
     configPath,
     `import { defineApp } from "convex/server";
-import selfStaticHosting from "@convex-dev/self-static-hosting/convex.config";
+import selfHosting from "@convex-dev/self-hosting/convex.config";
 
 const app = defineApp();
-app.use(selfStaticHosting);
+app.use(selfHosting);
 
 export default app;
 `
@@ -80,15 +80,15 @@ function createStaticHostingFile(): boolean {
 import {
   exposeUploadApi,
   exposeDeploymentQuery,
-} from "@convex-dev/self-static-hosting";
+} from "@convex-dev/self-hosting";
 
 // Internal functions for secure uploads (CLI only)
 export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
-  exposeUploadApi(components.selfStaticHosting);
+  exposeUploadApi(components.selfHosting);
 
 // Public query for live reload notifications
 export const { getCurrentDeployment } =
-  exposeDeploymentQuery(components.selfStaticHosting);
+  exposeDeploymentQuery(components.selfHosting);
 `
   );
   success("Created convex/staticHosting.ts");
@@ -108,21 +108,21 @@ function createHttpFile(): boolean {
       return false;
     }
     console.log("\n⚠️  convex/http.ts exists. Please add manually:");
-    console.log('   import { registerStaticRoutes } from "@convex-dev/self-static-hosting";');
-    console.log("   registerStaticRoutes(http, components.selfStaticHosting);\n");
+    console.log('   import { registerStaticRoutes } from "@convex-dev/self-hosting";');
+    console.log("   registerStaticRoutes(http, components.selfHosting);\n");
     return false;
   }
 
   writeFileSync(
     filePath,
     `import { httpRouter } from "convex/server";
-import { registerStaticRoutes } from "@convex-dev/self-static-hosting";
+import { registerStaticRoutes } from "@convex-dev/self-hosting";
 import { components } from "./_generated/api";
 
 const http = httpRouter();
 
 // Serve static files at root with SPA fallback
-registerStaticRoutes(http, components.selfStaticHosting);
+registerStaticRoutes(http, components.selfHosting);
 
 export default http;
 `
@@ -150,14 +150,14 @@ function updatePackageJson(): boolean {
     return false;
   }
 
-  pkg.scripts.deploy = "npx @convex-dev/self-static-hosting deploy";
+  pkg.scripts.deploy = "npx @convex-dev/self-hosting deploy";
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
   success("Added deploy script to package.json");
   return true;
 }
 
 async function main(): Promise<void> {
-  console.log("\n🚀 Convex Self Static Hosting Setup\n");
+  console.log("\n🚀 Convex Self Hosting Setup\n");
 
   // Check for convex directory
   if (!existsSync("convex")) {

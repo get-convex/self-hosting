@@ -1,6 +1,6 @@
 # Static Hosting Example
 
-This example demonstrates how to use the `@convex-dev/self-static-hosting` component to host a React/Vite app directly on Convex.
+This example demonstrates how to use the `@convex-dev/self-hosting` component to host a React/Vite app directly on Convex.
 
 ## Running the Example
 

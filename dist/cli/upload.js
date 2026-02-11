@@ -3,7 +3,7 @@
  * CLI tool to upload static files to Convex storage.
  *
  * Usage:
- *   npx @convex-dev/self-static-hosting upload [options]
+ *   npx @convex-dev/self-hosting upload [options]
  *
  * Options:
  *   --dist <path>            Path to dist directory (default: ./dist)
@@ -44,12 +44,9 @@ function parseArgs(args) {
     const result = {
         dist: "./dist",
         component: "staticHosting",
-        domain: null,
         prod: false, // Default to dev, use --prod for production
         build: false,
         help: false,
-        cloudflareWorkers: false,
-        workerName: null,
     };
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -62,9 +59,6 @@ function parseArgs(args) {
         else if (arg === "--component" || arg === "-c") {
             result.component = args[++i] || result.component;
         }
-        else if (arg === "--domain") {
-            result.domain = args[++i] || null;
-        }
         else if (arg === "--prod") {
             result.prod = true;
         }
@@ -74,22 +68,12 @@ function parseArgs(args) {
         else if (arg === "--build" || arg === "-b") {
             result.build = true;
         }
-        else if (arg === "--cloudflare-workers") {
-            result.cloudflareWorkers = true;
-        }
-        else if (arg === "--worker-name") {
-            result.workerName = args[++i] || null;
-        }
-    }
-    // Also check environment variable for worker name
-    if (!result.workerName && process.env.CLOUDFLARE_WORKER_NAME) {
-        result.workerName = process.env.CLOUDFLARE_WORKER_NAME;
     }
     return result;
 }
 function showHelp() {
     console.log(`
-Usage: npx @convex-dev/self-static-hosting upload [options]
+Usage: npx @convex-dev/self-hosting upload [options]
 
 Upload static files from a dist directory to Convex storage.
 
@@ -102,9 +86,9 @@ Options:
 
 Examples:
   # Upload to Convex storage
-  npx @convex-dev/self-static-hosting upload
-  npx @convex-dev/self-static-hosting upload --dist ./build --prod
-  npx @convex-dev/self-static-hosting upload --build --prod
+  npx @convex-dev/self-hosting upload
+  npx @convex-dev/self-hosting upload --dist ./build --prod
+  npx @convex-dev/self-hosting upload --build --prod
 `);
 }
 // Global flag for production mode

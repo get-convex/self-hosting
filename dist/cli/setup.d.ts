@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Interactive setup wizard for Convex Self Static Hosting.
+ * Interactive setup wizard for Convex Self Hosting.
  *
  * Usage:
- *   npx @convex-dev/self-static-hosting setup
+ *   npx @convex-dev/self-hosting setup
  */
 export {};
 //# sourceMappingURL=setup.d.ts.map

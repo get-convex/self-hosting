@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI for Convex Self Static Hosting
+ * CLI for Convex Self Hosting
  *
  * Commands:
  *   deploy              One-shot deployment (Convex backend + static files)

@@ -14,4 +14,4 @@ node_modules
 *.tsbuildinfo
 
 # Note: dist/ is NOT ignored - it's committed for GitHub installs
-# (npm install github:get-convex/self-static-hosting#main)
+# (npm install github:get-convex/self-hosting#main)

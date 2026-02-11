@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Convex component that enables self-hosting static React/Vite apps using Convex HTTP actions and file storage or Cloudflare Pages. Published as `@convex-dev/self-static-hosting` on npm.
+A Convex component that enables self-hosting static React/Vite apps using Convex HTTP actions and file storage. Published as `@convex-dev/self-hosting` on npm.
 
 ## Commands
 
@@ -32,7 +32,7 @@ npm run release          # Publish patch version
 
 ```
 src/
-├── cli/                 # CLI commands (setup, deploy, upload, setup-cloudflare)
+├── cli/                 # CLI commands (setup, deploy, upload)
 │   └── index.ts         # Entry point - routes to subcommands
 ├── client/              # Client library exposed via package exports
 │   └── index.ts         # registerStaticRoutes, exposeUploadApi, exposeDeploymentQuery, etc.
@@ -47,15 +47,13 @@ src/
 
 ### Package Exports
 
-- `@convex-dev/self-static-hosting` - Client APIs (registerStaticRoutes, exposeUploadApi, etc.)
-- `@convex-dev/self-static-hosting/react` - React components (UpdateBanner, useDeploymentUpdates)
-- `@convex-dev/self-static-hosting/convex.config` - Component config for app.use()
+- `@convex-dev/self-hosting` - Client APIs (registerStaticRoutes, exposeUploadApi, etc.)
+- `@convex-dev/self-hosting/react` - React components (UpdateBanner, useDeploymentUpdates)
+- `@convex-dev/self-hosting/convex.config` - Component config for app.use()
 
-### Three Deployment Modes
+### Deployment Mode
 
-1. **Cloudflare Pages** - Files on CF edge (recommended for production)
-2. **Convex Storage** - Files in Convex storage served via HTTP actions
-3. **Convex + CF CDN** - Files in Convex with Cloudflare caching
+- **Convex Storage** - Files in Convex storage served via HTTP actions
 
 ## Convex Patterns
 

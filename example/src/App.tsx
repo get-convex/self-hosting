@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UpdateBanner } from "@convex-dev/self-static-hosting/react";
+import { UpdateBanner } from "@convex-dev/self-hosting/react";
 import { api } from "../convex/_generated/api";
 import "./App.css";
 
