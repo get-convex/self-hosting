@@ -13,5 +13,9 @@ node_modules
 *.tgz
 *.tsbuildinfo
 
+*.swp
+.mcp.json
+next-example/
+
 # Note: dist/ is NOT ignored - it's committed for GitHub installs
 # (npm install github:get-convex/self-hosting#main)
