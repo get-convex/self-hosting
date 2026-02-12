@@ -113,7 +113,7 @@ Examples:
 }
 // Global flag for production mode
 let useProd = true;
-function convexRun(functionPath, args = {}) {
+function _convexRun(functionPath, args = {}) {
     const argsJson = JSON.stringify(args);
     const prodFlag = useProd ? "--prod" : "";
     const cmd = `npx convex run "${functionPath}" '${argsJson}' ${prodFlag} --typecheck=disable --codegen=disable`;
@@ -219,7 +219,7 @@ async function uploadWithConcurrency(files, componentName, deploymentId, useCdn,
     }
     // Fill initial pool
     for (let i = 0; i < concurrency && i < total; i++) {
-        enqueue();
+        void enqueue();
     }
     // Process remaining files as slots open
     while (pending.size > 0) {
@@ -229,7 +229,7 @@ async function uploadWithConcurrency(files, componentName, deploymentId, useCdn,
             await Promise.allSettled(pending);
             throw new Error("Upload failed");
         }
-        enqueue();
+        void enqueue();
     }
 }
 function collectFiles(dir, baseDir) {
