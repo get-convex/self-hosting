@@ -14,7 +14,7 @@
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, relative, extname, resolve } from "path";
 import { randomUUID } from "crypto";
-import { execSync, spawnSync } from "child_process";
+import { execSync, execFile, spawnSync } from "child_process";
 // MIME type mapping
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -48,6 +48,7 @@ function parseArgs(args) {
         build: false,
         cdn: false,
         cdnDeleteFunction: "",
+        concurrency: 5,
         help: false,
     };
     for (let i = 0; i < args.length; i++) {
@@ -76,6 +77,11 @@ function parseArgs(args) {
         else if (arg === "--cdn-delete-function") {
             result.cdnDeleteFunction = args[++i] || result.cdnDeleteFunction;
         }
+        else if (arg === "--concurrency" || arg === "-j") {
+            const val = parseInt(args[++i], 10);
+            if (val > 0)
+                result.concurrency = val;
+        }
     }
     return result;
 }
@@ -92,6 +98,7 @@ Options:
   -b, --build                 Run 'npm run build' with correct VITE_CONVEX_URL before uploading
       --cdn                   Upload non-HTML assets to convex-fs CDN instead of Convex storage
       --cdn-delete-function <name>  Convex function to delete CDN blobs (default: <component>:deleteCdnBlobs)
+  -j, --concurrency <n>       Number of parallel uploads (default: 5)
   -h, --help                  Show this help message
 
 Examples:
@@ -121,6 +128,108 @@ function convexRun(functionPath, args = {}) {
         const execError = error;
         console.error("Convex run failed:", execError.stderr || execError.stdout);
         throw error;
+    }
+}
+function convexRunAsync(functionPath, args = {}) {
+    return new Promise((resolve, reject) => {
+        const cmdArgs = [
+            "convex",
+            "run",
+            functionPath,
+            JSON.stringify(args),
+            "--typecheck=disable",
+            "--codegen=disable",
+        ];
+        if (useProd)
+            cmdArgs.push("--prod");
+        execFile("npx", cmdArgs, { encoding: "utf-8" }, (error, stdout, stderr) => {
+            if (error) {
+                console.error("Convex run failed:", stderr || stdout);
+                reject(error);
+                return;
+            }
+            resolve(stdout.trim());
+        });
+    });
+}
+async function uploadSingleFile(file, componentName, deploymentId, useCdn, siteUrl) {
+    const content = readFileSync(file.localPath);
+    const isHtml = file.contentType.startsWith("text/html");
+    if (useCdn && !isHtml && siteUrl) {
+        // CDN mode: upload non-HTML files to convex-fs
+        const uploadResponse = await fetch(`${siteUrl}/fs/upload`, {
+            method: "POST",
+            headers: { "Content-Type": file.contentType },
+            body: content,
+        });
+        if (!uploadResponse.ok) {
+            throw new Error(`CDN upload failed for ${file.path}: ${uploadResponse.status}`);
+        }
+        const { blobId } = (await uploadResponse.json());
+        await convexRunAsync(`${componentName}:recordAsset`, {
+            path: file.path,
+            blobId,
+            contentType: file.contentType,
+            deploymentId,
+        });
+        return { path: file.path, mode: "cdn" };
+    }
+    else {
+        // Standard mode: upload to Convex storage
+        const uploadUrlOutput = await convexRunAsync(`${componentName}:generateUploadUrl`);
+        const uploadUrl = JSON.parse(uploadUrlOutput);
+        const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.contentType },
+            body: content,
+        });
+        const { storageId } = (await response.json());
+        await convexRunAsync(`${componentName}:recordAsset`, {
+            path: file.path,
+            storageId,
+            contentType: file.contentType,
+            deploymentId,
+        });
+        return { path: file.path, mode: isHtml ? "storage/html" : "storage" };
+    }
+}
+async function uploadWithConcurrency(files, componentName, deploymentId, useCdn, siteUrl, concurrency) {
+    const total = files.length;
+    let completed = 0;
+    let failed = false;
+    const pending = new Set();
+    const iterator = files[Symbol.iterator]();
+    function enqueue() {
+        if (failed)
+            return;
+        const next = iterator.next();
+        if (next.done)
+            return;
+        const file = next.value;
+        const task = uploadSingleFile(file, componentName, deploymentId, useCdn, siteUrl).then(({ path, mode }) => {
+            completed++;
+            console.log(`  [${completed}/${total}] ${path} (${mode})`);
+            pending.delete(task);
+        });
+        task.catch(() => {
+            failed = true;
+        });
+        pending.add(task);
+        return task;
+    }
+    // Fill initial pool
+    for (let i = 0; i < concurrency && i < total; i++) {
+        enqueue();
+    }
+    // Process remaining files as slots open
+    while (pending.size > 0) {
+        await Promise.race(pending);
+        if (failed) {
+            // Wait for in-flight tasks to settle, then throw
+            await Promise.allSettled(pending);
+            throw new Error("Upload failed");
+        }
+        enqueue();
     }
 }
 function collectFiles(dir, baseDir) {
@@ -227,53 +336,16 @@ async function main() {
     console.log(`Uploading ${files.length} files with deployment ID: ${deploymentId}`);
     console.log(`Component: ${componentName}`);
     console.log("");
-    for (const file of files) {
-        const content = readFileSync(file.localPath);
-        const isHtml = file.contentType.startsWith("text/html");
-        if (useCdn && !isHtml && siteUrl) {
-            // CDN mode: upload non-HTML files to convex-fs
-            const uploadResponse = await fetch(`${siteUrl}/fs/upload`, {
-                method: "POST",
-                headers: { "Content-Type": file.contentType },
-                body: content,
-            });
-            if (!uploadResponse.ok) {
-                console.error(`  ✗ ${file.path} - CDN upload failed: ${uploadResponse.status}`);
-                process.exit(1);
-            }
-            const { blobId } = (await uploadResponse.json());
-            // Record in database with blobId (no storageId)
-            convexRun(`${componentName}:recordAsset`, {
-                path: file.path,
-                blobId,
-                contentType: file.contentType,
-                deploymentId,
-            });
-            console.log(`  ✓ ${file.path} (cdn)`);
-        }
-        else {
-            // Standard mode: upload to Convex storage
-            const uploadUrlOutput = convexRun(`${componentName}:generateUploadUrl`);
-            const uploadUrl = JSON.parse(uploadUrlOutput);
-            const response = await fetch(uploadUrl, {
-                method: "POST",
-                headers: { "Content-Type": file.contentType },
-                body: content,
-            });
-            const { storageId } = (await response.json());
-            // Record in database via internal function
-            convexRun(`${componentName}:recordAsset`, {
-                path: file.path,
-                storageId,
-                contentType: file.contentType,
-                deploymentId,
-            });
-            console.log(`  ✓ ${file.path} (${isHtml ? "storage/html" : "storage"})`);
-        }
+    try {
+        await uploadWithConcurrency(files, componentName, deploymentId, useCdn, siteUrl, args.concurrency);
+    }
+    catch {
+        console.error("Upload failed.");
+        process.exit(1);
     }
     console.log("");
     // Garbage collect old files
-    const gcOutput = convexRun(`${componentName}:gcOldAssets`, {
+    const gcOutput = await convexRunAsync(`${componentName}:gcOldAssets`, {
         currentDeploymentId: deploymentId,
     });
     const gcResult = JSON.parse(gcOutput);
@@ -287,7 +359,7 @@ async function main() {
     if (oldBlobIds.length > 0) {
         const cdnDeleteFn = args.cdnDeleteFunction || `${componentName}:deleteCdnBlobs`;
         try {
-            convexRun(cdnDeleteFn, { blobIds: oldBlobIds });
+            await convexRunAsync(cdnDeleteFn, { blobIds: oldBlobIds });
             console.log(`Cleaned up ${oldBlobIds.length} old CDN blob(s) from previous deployments`);
         }
         catch {
