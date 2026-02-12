@@ -124,7 +124,7 @@ Examples:
 // Global flag for production mode
 let useProd = true;
 
-function convexRun(
+function _convexRun(
   functionPath: string,
   args: Record<string, unknown> = {},
 ): string {
@@ -272,7 +272,7 @@ async function uploadWithConcurrency(
 
   // Fill initial pool
   for (let i = 0; i < concurrency && i < total; i++) {
-    enqueue();
+    void enqueue();
   }
 
   // Process remaining files as slots open
@@ -283,7 +283,7 @@ async function uploadWithConcurrency(
       await Promise.allSettled(pending);
       throw new Error("Upload failed");
     }
-    enqueue();
+    void enqueue();
   }
 }
 
