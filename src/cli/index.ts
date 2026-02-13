@@ -5,6 +5,7 @@
  * Commands:
  *   deploy              One-shot deployment (Convex backend + static files)
  *   upload              Upload static files to Convex storage
+ *   next-build          Build Next.js app and prepare for Convex deployment
  *   init                Print setup instructions
  */
 
@@ -26,6 +27,12 @@ async function main() {
       // Pass remaining args to upload command
       process.argv.splice(2, 1);
       await import("./upload.js");
+      break;
+
+    case "next-build":
+      // Pass remaining args to next-build command
+      process.argv.splice(2, 1);
+      await import("./next-build.js");
       break;
 
     case "init":
@@ -57,6 +64,7 @@ Commands:
   setup               Interactive setup wizard (creates files, configures deployment)
   deploy              One-shot deployment (Convex backend + static files)
   upload              Upload static files to Convex storage
+  next-build          Build Next.js app and prepare for Convex deployment
   init                Print setup instructions for integration
 
 Examples:

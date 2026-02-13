@@ -7,8 +7,8 @@ export declare const getByPath: import("convex/server").RegisteredQuery<"public"
 }, Promise<{
     _id: import("convex/values").GenericId<"staticAssets">;
     _creationTime: number;
-    blobId?: string | undefined;
     storageId?: import("convex/values").GenericId<"_storage"> | undefined;
+    blobId?: string | undefined;
     path: string;
     contentType: string;
     deploymentId: string;
@@ -27,8 +27,8 @@ export declare const generateUploadUrl: import("convex/server").RegisteredMutati
  * The caller is responsible for deleting the returned storageId from app storage.
  */
 export declare const recordAsset: import("convex/server").RegisteredMutation<"public", {
-    blobId?: string | undefined;
     storageId?: import("convex/values").GenericId<"_storage"> | undefined;
+    blobId?: string | undefined;
     path: string;
     contentType: string;
     deploymentId: string;
@@ -54,8 +54,8 @@ export declare const listAssets: import("convex/server").RegisteredQuery<"public
 }, Promise<{
     _id: import("convex/values").GenericId<"staticAssets">;
     _creationTime: number;
-    blobId?: string | undefined;
     storageId?: import("convex/values").GenericId<"_storage"> | undefined;
+    blobId?: string | undefined;
     path: string;
     contentType: string;
     deploymentId: string;

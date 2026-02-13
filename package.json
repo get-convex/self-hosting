@@ -55,6 +55,14 @@
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
     },
+    "./next": {
+      "types": "./dist/client/next.d.ts",
+      "default": "./dist/client/next.js"
+    },
+    "./nextAdapter": {
+      "types": "./dist/client/nextAdapter.d.ts",
+      "default": "./dist/client/nextAdapter.js"
+    },
     "./test": "./src/test.ts",
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
@@ -70,6 +78,10 @@
       "types": "./dist/component/convex.config.d.ts",
       "default": "./dist/component/convex.config.js"
     }
+  },
+  "dependencies": {
+    "fetch-to-node": "^2.1.0",
+    "tar": "^7.5.0"
   },
   "peerDependencies": {
     "convex": "^1.29.3",
