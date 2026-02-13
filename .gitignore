@@ -15,7 +15,9 @@ node_modules
 
 *.swp
 .mcp.json
-next-example/
+next-example/node_modules/
+next-example/.next/
+next-example/convex/_generatedNextServer.ts
 
 # Note: dist/ is NOT ignored - it's committed for GitHub installs
 # (npm install github:get-convex/self-hosting#main)
