@@ -365,6 +365,43 @@ export function exposeUploadApi(component) {
             },
         }),
         /**
+         * Generate multiple signed upload URLs in one call.
+         * Much faster than calling generateUploadUrl N times.
+         */
+        generateUploadUrls: internalMutationGeneric({
+            args: { count: v.number() },
+            handler: async (ctx, { count }) => {
+                const urls = [];
+                for (let i = 0; i < count; i++) {
+                    urls.push(await ctx.storage.generateUploadUrl());
+                }
+                return urls;
+            },
+        }),
+        /**
+         * Record multiple uploaded assets in one call.
+         */
+        recordAssets: internalMutationGeneric({
+            args: {
+                assets: v.array(v.object({
+                    path: v.string(),
+                    storageId: v.string(),
+                    contentType: v.string(),
+                    deploymentId: v.string(),
+                })),
+            },
+            handler: async (ctx, { assets }) => {
+                for (const asset of assets) {
+                    await ctx.runMutation(component.lib.recordAsset, {
+                        path: asset.path,
+                        storageId: asset.storageId,
+                        contentType: asset.contentType,
+                        deploymentId: asset.deploymentId,
+                    });
+                }
+            },
+        }),
+        /**
          * List all static assets (for debugging).
          */
         listAssets: internalQueryGeneric({

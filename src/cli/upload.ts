@@ -169,66 +169,6 @@ function convexRunAsync(
   });
 }
 
-async function uploadSingleFile(
-  file: { path: string; localPath: string; contentType: string },
-  componentName: string,
-  deploymentId: string,
-  useCdn: boolean,
-  siteUrl: string | null,
-): Promise<{ path: string; mode: string }> {
-  const content = readFileSync(file.localPath);
-  const isHtml = file.contentType.startsWith("text/html");
-
-  if (useCdn && !isHtml && siteUrl) {
-    // CDN mode: upload non-HTML files to convex-fs
-    const uploadResponse = await fetch(`${siteUrl}/fs/upload`, {
-      method: "POST",
-      headers: { "Content-Type": file.contentType },
-      body: content,
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error(
-        `CDN upload failed for ${file.path}: ${uploadResponse.status}`,
-      );
-    }
-
-    const { blobId } = (await uploadResponse.json()) as { blobId: string };
-
-    await convexRunAsync(`${componentName}:recordAsset`, {
-      path: file.path,
-      blobId,
-      contentType: file.contentType,
-      deploymentId,
-    });
-
-    return { path: file.path, mode: "cdn" };
-  } else {
-    // Standard mode: upload to Convex storage
-    const uploadUrlOutput = await convexRunAsync(
-      `${componentName}:generateUploadUrl`,
-    );
-    const uploadUrl = JSON.parse(uploadUrlOutput);
-
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { "Content-Type": file.contentType },
-      body: content,
-    });
-
-    const { storageId } = (await response.json()) as { storageId: string };
-
-    await convexRunAsync(`${componentName}:recordAsset`, {
-      path: file.path,
-      storageId,
-      contentType: file.contentType,
-      deploymentId,
-    });
-
-    return { path: file.path, mode: isHtml ? "storage/html" : "storage" };
-  }
-}
-
 async function uploadWithConcurrency(
   files: Array<{ path: string; localPath: string; contentType: string }>,
   componentName: string,
@@ -238,52 +178,136 @@ async function uploadWithConcurrency(
   concurrency: number,
 ): Promise<void> {
   const total = files.length;
-  let completed = 0;
-  let failed = false;
 
-  const pending = new Set<Promise<void>>();
-  const iterator = files[Symbol.iterator]();
-
-  function enqueue(): Promise<void> | undefined {
-    if (failed) return;
-    const next = iterator.next();
-    if (next.done) return;
-    const file = next.value;
-
-    const task = uploadSingleFile(
-      file,
-      componentName,
-      deploymentId,
-      useCdn,
-      siteUrl,
-    ).then(({ path, mode }) => {
-      completed++;
-      console.log(`  [${completed}/${total}] ${path} (${mode})`);
-      pending.delete(task);
-    });
-
-    task.catch(() => {
-      failed = true;
-    });
-
-    pending.add(task);
-    return task;
-  }
-
-  // Fill initial pool
-  for (let i = 0; i < concurrency && i < total; i++) {
-    void enqueue();
-  }
-
-  // Process remaining files as slots open
-  while (pending.size > 0) {
-    await Promise.race(pending);
-    if (failed) {
-      // Wait for in-flight tasks to settle, then throw
-      await Promise.allSettled(pending);
-      throw new Error("Upload failed");
+  // Separate CDN and storage files
+  const cdnFiles: typeof files = [];
+  const storageFiles: typeof files = [];
+  for (const file of files) {
+    const isHtml = file.contentType.startsWith("text/html");
+    if (useCdn && !isHtml && siteUrl) {
+      cdnFiles.push(file);
+    } else {
+      storageFiles.push(file);
     }
-    void enqueue();
+  }
+
+  // Upload storage files using batch operations
+  let completed = 0;
+  const allAssets: Array<{
+    path: string;
+    storageId?: string;
+    blobId?: string;
+    contentType: string;
+    deploymentId: string;
+  }> = [];
+
+  if (storageFiles.length > 0) {
+    // Step 1: Generate all upload URLs in one batch call
+    console.log(`  Generating ${storageFiles.length} upload URLs...`);
+    const urlsOutput = await convexRunAsync(
+      `${componentName}:generateUploadUrls`,
+      { count: storageFiles.length },
+    );
+    const uploadUrls: string[] = JSON.parse(urlsOutput);
+
+    // Step 2: Upload all files in parallel via fetch
+    const storageIds: string[] = new Array(storageFiles.length);
+    const pending = new Set<Promise<void>>();
+
+    for (let i = 0; i < storageFiles.length; i++) {
+      const idx = i;
+      const file = storageFiles[idx];
+      const task = (async () => {
+        const content = readFileSync(file.localPath);
+        const response = await fetch(uploadUrls[idx], {
+          method: "POST",
+          headers: { "Content-Type": file.contentType },
+          body: content,
+        });
+        const { storageId } = (await response.json()) as { storageId: string };
+        storageIds[idx] = storageId;
+        completed++;
+        const isHtml = file.contentType.startsWith("text/html");
+        console.log(`  [${completed}/${total}] ${file.path} (${isHtml ? "storage/html" : "storage"})`);
+      })().then(() => { pending.delete(task); });
+      pending.add(task);
+      if (pending.size >= concurrency) {
+        await Promise.race(pending);
+      }
+    }
+    await Promise.all(pending);
+
+    for (let i = 0; i < storageFiles.length; i++) {
+      allAssets.push({
+        path: storageFiles[i].path,
+        storageId: storageIds[i],
+        contentType: storageFiles[i].contentType,
+        deploymentId,
+      });
+    }
+  }
+
+  // Upload CDN files (still uses per-file calls since CDN has its own upload endpoint)
+  if (cdnFiles.length > 0 && siteUrl) {
+    const pending = new Set<Promise<void>>();
+    for (const file of cdnFiles) {
+      const task = (async () => {
+        const content = readFileSync(file.localPath);
+        const uploadResponse = await fetch(`${siteUrl}/fs/upload`, {
+          method: "POST",
+          headers: { "Content-Type": file.contentType },
+          body: content,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(
+            `CDN upload failed for ${file.path}: ${uploadResponse.status}`,
+          );
+        }
+        const { blobId } = (await uploadResponse.json()) as { blobId: string };
+        allAssets.push({
+          path: file.path,
+          blobId,
+          contentType: file.contentType,
+          deploymentId,
+        });
+        completed++;
+        console.log(`  [${completed}/${total}] ${file.path} (cdn)`);
+      })().then(() => { pending.delete(task); });
+      pending.add(task);
+      if (pending.size >= concurrency) {
+        await Promise.race(pending);
+      }
+    }
+    await Promise.all(pending);
+  }
+
+  // Step 3: Record all assets in one batch call
+  if (allAssets.length > 0) {
+    console.log("  Recording assets...");
+    // recordAssets only handles storageId assets; CDN assets need individual recording
+    const storageAssets = allAssets.filter((a) => a.storageId);
+    const cdnAssets = allAssets.filter((a) => a.blobId);
+
+    if (storageAssets.length > 0) {
+      await convexRunAsync(`${componentName}:recordAssets`, {
+        assets: storageAssets.map((a) => ({
+          path: a.path,
+          storageId: a.storageId!,
+          contentType: a.contentType,
+          deploymentId: a.deploymentId,
+        })),
+      });
+    }
+
+    // CDN assets still need individual recording (they use blobId not storageId)
+    for (const asset of cdnAssets) {
+      await convexRunAsync(`${componentName}:recordAsset`, {
+        path: asset.path,
+        blobId: asset.blobId,
+        contentType: asset.contentType,
+        deploymentId: asset.deploymentId,
+      });
+    }
   }
 }
 

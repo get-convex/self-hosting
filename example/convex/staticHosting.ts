@@ -6,7 +6,7 @@ import {
 
 // Expose the upload API as INTERNAL functions.
 // These can only be called via `npx convex run` - not from the public internet.
-export const { generateUploadUrl, recordAsset, gcOldAssets, listAssets } =
+export const { generateUploadUrl, generateUploadUrls, recordAsset, recordAssets, gcOldAssets, listAssets } =
   exposeUploadApi(components.selfHosting);
 
 // Expose the deployment query for live reload notifications.

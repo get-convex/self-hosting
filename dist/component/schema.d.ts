@@ -11,7 +11,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         blobId: import("convex/values").VString<string | undefined, "optional">;
         contentType: import("convex/values").VString<string, "required">;
         deploymentId: import("convex/values").VString<string, "required">;
-    }, "required", "blobId" | "path" | "contentType" | "deploymentId" | "storageId">, {
+    }, "required", "path" | "blobId" | "contentType" | "deploymentId" | "storageId">, {
         by_path: ["path", "_creationTime"];
         by_deploymentId: ["deploymentId", "_creationTime"];
     }, {}, {}>;

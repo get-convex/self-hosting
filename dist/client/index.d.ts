@@ -62,6 +62,24 @@ export declare function exposeUploadApi(component: ComponentApi): {
         blobIds: string[];
     }>>;
     /**
+     * Generate multiple signed upload URLs in one call.
+     * Much faster than calling generateUploadUrl N times.
+     */
+    generateUploadUrls: import("convex/server").RegisteredMutation<"internal", {
+        count: number;
+    }, Promise<string[]>>;
+    /**
+     * Record multiple uploaded assets in one call.
+     */
+    recordAssets: import("convex/server").RegisteredMutation<"internal", {
+        assets: {
+            path: string;
+            contentType: string;
+            deploymentId: string;
+            storageId: string;
+        }[];
+    }, Promise<void>>;
+    /**
      * List all static assets (for debugging).
      */
     listAssets: import("convex/server").RegisteredQuery<"internal", {
